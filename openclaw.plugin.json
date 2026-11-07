@@ -2,6 +2,7 @@
   "id": "fatfish",
   "name": "大肥鱼 QQ 伙伴",
   "description": "Free-first optional capabilities for OpenClaw QQ bots (early alpha)",
+  "cliCommands": ["fatfish"],
   "contracts": { "tools": ["fatfish_tts", "fatfish_generate_image", "fatfish_generate_video"] },
   "toolMetadata": { "fatfish_tts": { "optional": true }, "fatfish_generate_image": { "optional": true }, "fatfish_generate_video": { "optional": true } },
   "configSchema": {

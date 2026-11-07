@@ -10,6 +10,15 @@ export default definePluginEntry({
   name: '大肥鱼 QQ 伙伴',
   description: '可选的语音等能力，适用于 OpenClaw 机器人',
   register(api) {
+    if (['full', 'discovery', 'cli-metadata'].includes(api.registrationMode ?? 'full')) {
+      api.registerCli(({ program }) => {
+        program.command('fatfish').description('大肥鱼 QQ 机器人配置').command('setup').description('交互式配置 QQ 接入').action(async () => {
+          try { const { startWizard } = await import('./wizard.js'); const result = await startWizard(); if (!result.completed) process.exitCode = 1; }
+          catch (error) { console.error(`配置向导未完成：${error.message}`); process.exitCode = 1; }
+        });
+      }, { descriptors: [{ name: 'fatfish', description: '大肥鱼 QQ 机器人配置', hasSubcommands: true }] });
+      if (api.registrationMode === 'cli-metadata') return;
+    }
     const config = api.pluginConfig?.tts ?? {};
     const admins = api.pluginConfig?.admins ?? [];
     const stateDir = api.runtime.state.resolveStateDir();
