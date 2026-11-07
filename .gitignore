@@ -1,0 +1,10 @@
+node_modules/
+__pycache__/
+.venv/
+.venv-*/
+.env
+.env.*
+!.env.example
+data/
+*.log
+*.tgz

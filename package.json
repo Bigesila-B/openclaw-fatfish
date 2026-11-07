@@ -1,0 +1,11 @@
+{
+  "name": "openclaw-fatfish",
+  "version": "0.1.0-alpha.1",
+  "description": "Optional free-first media capabilities for OpenClaw QQ bots",
+  "type": "module",
+  "license": "MIT",
+  "files": ["src/", "python/", "openclaw.plugin.json", "README.md", "LICENSE", "docs/"],
+  "scripts": { "test": "node --test", "check": "node --check src/index.js && node --check src/tts.js" },
+  "peerDependencies": { "openclaw": ">=2026.5.17" },
+  "openclaw": { "extensions": ["./src/index.js"] }
+}

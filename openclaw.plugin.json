@@ -1,0 +1,22 @@
+{
+  "id": "fatfish",
+  "name": "大肥鱼 QQ 伙伴",
+  "description": "Free-first optional capabilities for OpenClaw QQ bots (early alpha)",
+  "contracts": { "tools": ["fatfish_tts"] },
+  "toolMetadata": { "fatfish_tts": { "optional": true } },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "tts": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": { "type": "boolean", "default": false },
+          "python": { "type": "string", "minLength": 1, "default": "python" },
+          "voice": { "type": "string", "minLength": 1, "default": "zh-CN-XiaoxiaoNeural" }
+        }
+      }
+    }
+  }
+}
