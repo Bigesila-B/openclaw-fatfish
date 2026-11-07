@@ -51,7 +51,7 @@ export function createPolicyStore(stateDir) {
   return { read, set };
 }
 
-export function makeAdminCommand({ admins, store, generate }) {
+export function makeAdminCommand({ admins, store, generate, personaStore }) {
   return {
     name: 'fish',
     description: '大肥鱼管理员权限设置',
@@ -68,6 +68,26 @@ export function makeAdminCommand({ admins, store, generate }) {
         return { text: '生成完成。', mediaUrl: result.filePath };
       }
       if (ctx.isAuthorizedSender !== true || !isAdmin(identity, admins)) return { text: '仅限已配置并通过通道授权的 QQ 管理员使用。' };
+      const personaMatch = /^persona(?:\s+([\s\S]+))?$/.exec((ctx.args ?? '').trim());
+      if (personaMatch) {
+        if (!personaStore) return { text: '人格功能不可用。' };
+        const action = personaMatch[1] ?? 'status';
+        if (action === 'status') {
+          const persona = await personaStore.read();
+          return { text: `人格提示词：${persona.enabled ? '已启用' : '已关闭'}；${persona.prompt ? `已配置 ${persona.prompt.length} 个字符` : '尚未配置'}。用法：/fish persona set 人格描述；/fish persona on|off|reset` };
+        }
+        const set = /^set\s+([\s\S]+)$/.exec(action);
+        try {
+          if (set) await personaStore.change({ type: 'set', prompt: set[1] });
+          else if (action === 'on' || action === 'off') await personaStore.change({ type: 'enabled', enabled: action === 'on' });
+          else if (action === 'reset') await personaStore.change({ type: 'reset' });
+          else return { text: '用法：/fish persona set 人格描述；/fish persona on|off|reset' };
+        } catch (error) {
+          if (error.message === '人格配置无效。') return { text: '人格描述不能为空，且不能超过 1500 个字符；启用前请先设置描述。' };
+          throw error;
+        }
+        return { text: action === 'reset' ? '已恢复配置文件中的人格设置。' : '人格设置已保存，后续 QQ 聊天生效；是否应用还取决于 OpenClaw 钩子权限。' };
+      }
       const args = (ctx.args ?? '').trim().split(/\s+/);
       if (args.length === 1 && (args[0] === '' || args[0] === 'permissions')) {
         const policy = await store.read();

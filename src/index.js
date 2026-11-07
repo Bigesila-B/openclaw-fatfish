@@ -2,6 +2,7 @@ import { definePluginEntry } from 'openclaw/plugin-sdk/plugin-entry';
 import { synthesize } from './tts.js';
 import { canUse, createPolicyStore, makeAdminCommand } from './permissions.js';
 import { generateComfy } from './comfy.js';
+import { createPersonaStore, makePersonaHook } from './persona.js';
 
 export default definePluginEntry({
   id: 'fatfish',
@@ -12,6 +13,8 @@ export default definePluginEntry({
     const admins = api.pluginConfig?.admins ?? [];
     const stateDir = api.runtime.state.resolveStateDir();
     const store = createPolicyStore(stateDir);
+    const personaStore = createPersonaStore(stateDir, api.pluginConfig?.persona);
+    api.on('before_prompt_build', makePersonaHook(personaStore, api.logger));
     let generating = false;
     const generate = async (kind, prompt) => {
       if (generating) throw new Error('已有生成任务正在运行，请稍后再试。');
@@ -19,7 +22,7 @@ export default definePluginEntry({
       try { return await generateComfy(prompt, { ...api.pluginConfig?.[kind], kind }); }
       finally { generating = false; }
     };
-    api.registerCommand(makeAdminCommand({ admins, store, generate }));
+    api.registerCommand(makeAdminCommand({ admins, store, generate, personaStore }));
     for (const kind of ['image', 'video']) {
       const name = `fatfish_generate_${kind}`;
       api.registerTool((ctx) => ({

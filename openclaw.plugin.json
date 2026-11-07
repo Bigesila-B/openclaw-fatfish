@@ -17,6 +17,14 @@
       },
       "image": { "$ref": "#/$defs/comfy" },
       "video": { "$ref": "#/$defs/comfy" },
+      "persona": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": { "type": "boolean", "default": false },
+          "prompt": { "type": "string", "maxLength": 1500, "default": "" }
+        }
+      },
       "tts": {
         "type": "object",
         "additionalProperties": false,
