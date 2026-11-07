@@ -2,7 +2,7 @@
 
 面向 SnowLuma 私人 QQ 号和 OpenClaw 的免费优先、按需启用的开源项目。
 
-> **早期 Alpha：当前只有实验性的语音合成工具；没有管理面板、STT、生图、生视频或 MaiBot 式自主聊天。尚未完成真实 OpenClaw + SnowLuma + QQ 端到端验证，不建议作为稳定版使用。**
+> **早期 Alpha：提供实验性的管理员权限、Edge TTS 及本机 ComfyUI 生图/视频接入。没有管理面板、STT 或 MaiBot 式自主聊天。尚未完成真实 ComfyUI + OpenClaw + SnowLuma + QQ 端到端验证，不建议作为稳定版使用。**
 
 ## 功能状态
 
@@ -10,7 +10,8 @@
 |---|---|---|
 | Edge TTS | 实验性 | 可选工具，默认关闭；需要单独安装 Python 包及联网 |
 | STT 语音识别 | 计划中 | 候选方案：本地 faster-whisper |
-| 生图 / 生视频 | 计划中 | 候选方案：自行部署 ComfyUI 工作流 |
+| 生图 / 生视频 | 实验性 | [自行配置本机 ComfyUI 工作流](docs/comfyui.md)；无内置模型，未经过真实环境端到端验证 |
+| QQ 管理员 / 权限 | 实验性 | [配置 QQ 管理员与权限](docs/permissions.md)，需 QQ 通道传递可信发送者身份 |
 | 自然群聊决策 / 管理面板 | 计划中 | 需要先验证 QQ 通道的群消息接入 |
 | QQ 状态卡片 | 设计中 | [字段、指令和权限设计](docs/status-panel.md)，尚未实现 |
 

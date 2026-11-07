@@ -1,5 +1,7 @@
 import { definePluginEntry } from 'openclaw/plugin-sdk/plugin-entry';
 import { synthesize } from './tts.js';
+import { canUse, createPolicyStore, makeAdminCommand } from './permissions.js';
+import { generateComfy } from './comfy.js';
 
 export default definePluginEntry({
   id: 'fatfish',
@@ -7,6 +9,33 @@ export default definePluginEntry({
   description: '可选的语音等能力，适用于 OpenClaw 机器人',
   register(api) {
     const config = api.pluginConfig?.tts ?? {};
+    const admins = api.pluginConfig?.admins ?? [];
+    const stateDir = api.runtime.state.resolveStateDir();
+    const store = createPolicyStore(stateDir);
+    let generating = false;
+    const generate = async (kind, prompt) => {
+      if (generating) throw new Error('已有生成任务正在运行，请稍后再试。');
+      generating = true;
+      try { return await generateComfy(prompt, { ...api.pluginConfig?.[kind], kind }); }
+      finally { generating = false; }
+    };
+    api.registerCommand(makeAdminCommand({ admins, store, generate }));
+    for (const kind of ['image', 'video']) {
+      const name = `fatfish_generate_${kind}`;
+      api.registerTool((ctx) => ({
+        name,
+        label: kind === 'image' ? '大肥鱼生图' : '大肥鱼生视频',
+        description: `按照用户明确意图使用管理员配置的本机 ComfyUI 工作流生成${kind === 'image' ? '图片' : '视频'}。仅当用户获授权时才会运行。`,
+        parameters: { type: 'object', additionalProperties: false, properties: { prompt: { type: 'string', minLength: 1, maxLength: 2000 } }, required: ['prompt'] },
+        async execute(_id, params) {
+          const identity = { channel: ctx.messageChannel, senderId: ctx.requesterSenderId };
+          if (!canUse(identity, admins, await store.read(), kind)) throw new Error('当前 QQ 用户没有使用此功能的权限，或身份不可验证。');
+          const result = await generate(kind, params.prompt);
+          if (!canUse(identity, admins, await store.read(), kind)) throw new Error('生成期间权限发生变化，无法返回结果。');
+          return { content: [{ type: 'text', text: `生成完成：${result.filePath}。请通过当前会话的消息工具发送文件；只有发送成功后才表示已发送。` }], details: result };
+        }
+      }), { name, optional: true, promptGuidance: `用户明确请求生成${kind === 'image' ? '图片' : '视频'}时可调用 ${name}；权限由工具检查。` });
+    }
     api.registerTool({
       name: 'fatfish_tts',
       label: '大肥鱼语音合成',
