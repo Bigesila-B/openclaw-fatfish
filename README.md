@@ -22,7 +22,19 @@ Edge TTS 不需要本项目收取 API 费用，但使用的是在线服务，服
 - 使用 TTS 时需要 Python 和网络；[语音配置教程](docs/tts.md)。
 - 目前 OpenClaw 的通道、音频发送和安装兼容性尚未在真实环境验证。音频能否作为 QQ 语音发送取决于通道实现和媒体策略。
 
-## 开发安装（实验性）
+## 从 GitHub 安装（实验性）
+
+OpenClaw 2026.11.1 下已验证以下 GitHub 安装及插件检查；请先审阅本仓库代码，只安装你信任的插件：
+
+```bash
+openclaw plugins install git:github.com/Bigesila-B/openclaw-fatfish@main
+openclaw plugins enable fatfish
+openclaw plugins inspect fatfish --runtime --json
+```
+
+非交互环境可能需要按 OpenClaw 提示在安装时添加 `--force`。`main` 会变化；生产环境建议改用审阅过的固定提交。
+
+### 本地开发安装
 
 先将仓库下载到运行 OpenClaw 的机器，然后在该目录执行：
 
@@ -32,7 +44,7 @@ openclaw plugins enable fatfish
 openclaw plugins inspect fatfish --runtime --json
 ```
 
-本插件没有发布到 npm 或 ClawHub。本地插件检查已成功；Git 安装、正在运行的 Gateway、QQ 收发及其他 OpenClaw 版本尚待验证；不要将以上步骤理解为经过端到端验证的一键安装。
+本插件没有发布到 npm 或 ClawHub。正在运行的 Gateway、QQ 收发及其他 OpenClaw 版本尚待验证；不要将以上步骤理解为经过端到端验证的一键安装。
 
 参考 [语音教程](docs/tts.md) 启用可选工具。没有开启 TTS 时，插件不会调用语音服务。
 
