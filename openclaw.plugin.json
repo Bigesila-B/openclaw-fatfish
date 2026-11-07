@@ -17,6 +17,14 @@
       },
       "image": { "$ref": "#/$defs/comfy" },
       "video": { "$ref": "#/$defs/comfy" },
+      "blacklist": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "users": { "type": "array", "items": { "type": "string", "pattern": "^[0-9]{5,15}$" }, "uniqueItems": true, "maxItems": 1000 },
+          "groups": { "type": "array", "items": { "type": "string", "pattern": "^[0-9]{5,15}$" }, "uniqueItems": true, "maxItems": 1000 }
+        }
+      },
       "persona": {
         "type": "object",
         "additionalProperties": false,

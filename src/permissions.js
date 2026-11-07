@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { shouldBlock } from './blacklist.js';
 
 const capabilities = ['image', 'video'];
 
@@ -51,7 +52,7 @@ export function createPolicyStore(stateDir) {
   return { read, set };
 }
 
-export function makeAdminCommand({ admins, store, generate, personaStore }) {
+export function makeAdminCommand({ admins, store, generate, personaStore, blacklistStore }) {
   return {
     name: 'fish',
     description: '大肥鱼管理员权限设置',
@@ -59,6 +60,11 @@ export function makeAdminCommand({ admins, store, generate, personaStore }) {
     requireAuth: true,
     async handler(ctx) {
       const identity = { channel: ctx.channel, senderId: ctx.senderId };
+      if (blacklistStore && ctx.channel === 'snowluma') {
+        try {
+          if (shouldBlock(await blacklistStore.read(), { ...identity, conversationId: ctx.from })) return {};
+        } catch { return {}; }
+      }
       const match = /^(image|video)\s+([\s\S]+)$/.exec((ctx.args ?? '').trim());
       if (match) {
         if (ctx.isAuthorizedSender !== true || !canUse(identity, admins, await store.read(), match[1])) return { text: '当前 QQ 用户没有使用此功能的权限，或身份不可验证。' };
@@ -68,6 +74,23 @@ export function makeAdminCommand({ admins, store, generate, personaStore }) {
         return { text: '生成完成。', mediaUrl: result.filePath };
       }
       if (ctx.isAuthorizedSender !== true || !isAdmin(identity, admins)) return { text: '仅限已配置并通过通道授权的 QQ 管理员使用。' };
+      const blacklistMatch = /^blacklist(?:\s+([\s\S]+))?$/.exec((ctx.args ?? '').trim());
+      if (blacklistMatch) {
+        if (!blacklistStore) return { text: '黑名单功能不可用。' };
+        const action = (blacklistMatch[1] ?? 'list').trim();
+        if (action === 'list') {
+          const policy = await blacklistStore.read();
+          const summary = `黑名单：QQ 用户 ${policy.users.length} 个，QQ群 ${policy.groups.length} 个。`;
+          const ownPrivate = ctx.from === `snowluma:private:${ctx.senderId}` || ctx.from === `private:${ctx.senderId}`;
+          if (!ownPrivate) return { text: `${summary} 在管理员私聊中查看号码。` };
+          const format = items => items.slice(0, 20).join('、') || '无';
+          return { text: `${summary}\n用户：${format(policy.users)}${policy.users.length > 20 ? ' 等' : ''}\n群：${format(policy.groups)}${policy.groups.length > 20 ? ' 等' : ''}\n每类最多显示前 20 个。` };
+        }
+        const match = /^(add|remove)\s+(user|group)\s+([0-9]{5,15})$/.exec(action);
+        if (!match) return { text: '用法：/fish blacklist add|remove user|group 号码' };
+        await blacklistStore.change(match[1], match[2], match[3]);
+        return { text: `已${match[1] === 'add' ? '加入' : '移出'}${match[2] === 'user' ? 'QQ 用户' : 'QQ群'}黑名单。` };
+      }
       const personaMatch = /^persona(?:\s+([\s\S]+))?$/.exec((ctx.args ?? '').trim());
       if (personaMatch) {
         if (!personaStore) return { text: '人格功能不可用。' };
