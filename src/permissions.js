@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { shouldBlock } from './blacklist.js';
 
-const capabilities = ['image', 'video'];
+const capabilities = ['image', 'video', 'watch'];
 
 export function isAdmin(identity, admins) {
   return identity?.channel === 'snowluma' && typeof identity.senderId === 'string' &&
@@ -24,12 +24,12 @@ export function createPolicyStore(stateDir) {
     let raw;
     try { raw = await readFile(file, 'utf8'); }
     catch (error) {
-      if (error.code === 'ENOENT') return { image: false, video: false };
+      if (error.code === 'ENOENT') return { image: false, video: false, watch: false };
       throw error;
     }
     const obj = JSON.parse(raw);
-    if (!obj || typeof obj.image !== 'boolean' || typeof obj.video !== 'boolean') throw new Error('权限文件格式错误');
-    return { image: obj.image, video: obj.video };
+    if (!obj || typeof obj.image !== 'boolean' || typeof obj.video !== 'boolean' || (obj.watch !== undefined && typeof obj.watch !== 'boolean')) throw new Error('权限文件格式错误');
+    return { image: obj.image, video: obj.video, watch: obj.watch ?? false };
   }
   function set(capability, enabled) {
     if (!capabilities.includes(capability) || typeof enabled !== 'boolean') return Promise.reject(new Error('无效权限'));
@@ -114,13 +114,13 @@ export function makeAdminCommand({ admins, store, generate, personaStore, blackl
       const args = (ctx.args ?? '').trim().split(/\s+/);
       if (args.length === 1 && (args[0] === '' || args[0] === 'permissions')) {
         const policy = await store.read();
-        return { text: `普通用户权限：生图 ${policy.image ? '允许' : '禁止'}；视频 ${policy.video ? '允许' : '禁止'}。功能仍须由管理员配置并启用。用法：/fish allow image|video on|off` };
+        return { text: `普通用户权限：生图 ${policy.image ? '允许' : '禁止'}；生视频 ${policy.video ? '允许' : '禁止'}；看视频 ${policy.watch ? '允许' : '禁止'}。功能仍须由管理员配置并启用。用法：/fish allow image|video|watch on|off` };
       }
       if (args.length !== 3 || args[0] !== 'allow' || !capabilities.includes(args[1]) || !['on', 'off'].includes(args[2])) {
-        return { text: '用法：/fish permissions 或 /fish allow image|video on|off' };
+        return { text: '用法：/fish permissions 或 /fish allow image|video|watch on|off' };
       }
       await store.set(args[1], args[2] === 'on');
-      return { text: `已${args[2] === 'on' ? '允许' : '禁止'}普通用户使用${args[1] === 'image' ? '生图' : '视频'}；功能仍须由管理员配置并启用。` };
+      return { text: `已${args[2] === 'on' ? '允许' : '禁止'}普通用户使用${{ image: '生图', video: '生视频', watch: '看视频' }[args[1]]}；功能仍须由管理员配置并启用。` };
     }
   };
 }

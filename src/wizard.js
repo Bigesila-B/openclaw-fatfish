@@ -96,6 +96,7 @@ export async function runWizard(ui, cli, probe = probeTcp) {
     });
   }
   ui.print(`Agnes 聊天、生图和视频，MiMo TTS，以及硅基流动 STT 可以之后按教程配置：${guides}/cloud-providers.md。`);
+  ui.print(`可选看视频功能配置：${guides}/video-watch.md。`);
 
   const patch = buildPatch({ wsUrl, token, admins, groups, persona });
   ui.print('\n第 6 步：准备写入配置：');

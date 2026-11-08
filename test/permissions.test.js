@@ -23,11 +23,11 @@ test('only authorized admins can change persistent permissions', async t => {
   const base = { channel: 'snowluma', senderId: '123456', isAuthorizedSender: true };
   assert.match((await command.handler({ ...base, senderId: '111111', args: 'allow image on' })).text, /仅限/);
   assert.match((await command.handler({ ...base, isAuthorizedSender: false, args: 'allow image on' })).text, /仅限/);
-  assert.deepEqual(await store.read(), { image: false, video: false });
+  assert.deepEqual(await store.read(), { image: false, video: false, watch: false });
   await Promise.all([command.handler({ ...base, args: 'allow image on' }), command.handler({ ...base, args: 'allow video on' })]);
-  assert.deepEqual(await createPolicyStore(root).read(), { image: true, video: true });
+  assert.deepEqual(await createPolicyStore(root).read(), { image: true, video: true, watch: false });
   await command.handler({ ...base, args: 'allow image off' });
-  assert.deepEqual(await store.read(), { image: false, video: true });
+  assert.deepEqual(await store.read(), { image: false, video: true, watch: false });
 });
 
 test('malformed persisted policies fail closed', async t => {
@@ -50,4 +50,19 @@ test('explicit generation commands enforce the same permission policy', async t 
   await store.set('image', true);
   assert.equal((await command.handler(ctx)).mediaUrl, '/tmp/fish.png');
   assert.equal(called, 1);
+});
+
+test('existing policies migrate with video watching disabled and only admins may enable it', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'fatfish-policy-test-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, 'fatfish'));
+  await writeFile(join(root, 'fatfish', 'permissions.json'), JSON.stringify({ image: true, video: false }));
+  const store = createPolicyStore(root);
+  assert.deepEqual(await store.read(), { image: true, video: false, watch: false });
+  const command = makeAdminCommand({ admins: ['123456'], store });
+  const ctx = { channel: 'snowluma', senderId: '111111', isAuthorizedSender: true, args: 'allow watch on' };
+  await command.handler(ctx);
+  assert.equal(canUse(ctx, ['123456'], await store.read(), 'watch'), false);
+  await command.handler({ ...ctx, senderId: '123456' });
+  assert.equal(canUse(ctx, ['123456'], await store.read(), 'watch'), true);
 });

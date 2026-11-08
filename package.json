@@ -1,6 +1,6 @@
 {
   "name": "openclaw-fatfish",
-  "version": "0.1.0-alpha.6",
+  "version": "0.1.0-alpha.7",
   "description": "Optional free-first media capabilities for OpenClaw QQ bots",
   "type": "module",
   "license": "MIT",
@@ -10,11 +10,15 @@
     "openclaw.plugin.json",
     "README.md",
     "LICENSE",
-    "docs/"
+    "docs/",
+    "vendor/",
+    "skills/",
+    "!**/__pycache__/**",
+    "!**/*.pyc"
   ],
   "scripts": {
     "test": "node --test",
-    "check": "node --check src/index.js && node --check src/tts.js && node --check src/comfy.js && node --check src/permissions.js && node --check src/persona.js && node --check src/blacklist.js && node --check src/wizard.js && node --check src/providers/shared.js && node --check src/providers/agnes.js && node --check src/providers/mimo.js && node --check src/providers/siliconflow.js && node --check src/providers/index.js"
+    "check": "node --check src/index.js && node --check src/tts.js && node --check src/comfy.js && node --check src/permissions.js && node --check src/persona.js && node --check src/blacklist.js && node --check src/wizard.js && node --check src/providers/shared.js && node --check src/providers/agnes.js && node --check src/providers/mimo.js && node --check src/providers/siliconflow.js && node --check src/providers/index.js && node --check src/video-watch.js"
   },
   "peerDependencies": {
     "openclaw": ">=2026.5.17"

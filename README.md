@@ -11,6 +11,7 @@
 | 配置向导 | 实验性 | [从纯净 OpenClaw 配置 QQ 接入](docs/setup.md) |
 | TTS / 音色克隆 | 实验性 | [MiMo 云端语音及克隆配置](docs/cloud-providers.md)，也可选 Edge TTS；默认关闭 |
 | STT 语音识别 | 实验性 | 硅基流动接口已验证；QQ 语音输入链路尚未完成 |
+| 看视频 | 实验性 | [可选视频理解技能](docs/video-watch.md)：HTTPS 视频直链、抽帧和可选 STT；QQ 视频附件未接通 |
 | 生图 / 生视频 | 实验性 | [Agnes 云端模型](docs/cloud-providers.md)或[本机 ComfyUI](docs/comfyui.md)；视频服务曾返回繁忙，QQ 端到端未验证 |
 | QQ 管理员 / 权限 | 实验性 | [配置 QQ 管理员与权限](docs/permissions.md)，需 QQ 通道传递可信发送者身份 |
 | QQ 黑名单 | 实验性 | [屏蔽 QQ 用户和群](docs/blacklist.md)，需实际验证消息路由 |

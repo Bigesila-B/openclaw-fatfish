@@ -6,7 +6,7 @@ SnowLuma / QQ 通道负责收发；OpenClaw 负责会话和工具调用；大肥
 
 ## 当前实现
 
-本仓库有实验性 Edge / MiMo TTS、MiMo 音色克隆、硅基流动 STT 供应商、Agnes 和本机 ComfyUI 生图与视频工具，以及管理员授权、QQ 黑名单和聊天人格。QQ 语音输入链路尚未补齐或验证。它不提供 QQ 通道、消息决策器、可视化面板、持久任务队列或长期记忆。媒体、黑名单、人格和管理员权限尚未完成真实 QQ 环境端到端验证。
+本仓库有实验性 Edge / MiMo TTS、MiMo 音色克隆、硅基流动 STT 供应商、Agnes 和本机 ComfyUI 生图与视频工具，以及管理员授权、QQ 黑名单和聊天人格；可选看视频模块基于 Video Context Builder 抽帧并转写音频。QQ 语音输入链路尚未补齐或验证。它不提供 QQ 通道、消息决策器、可视化面板、持久任务队列或长期记忆。媒体、黑名单、人格和管理员权限尚未完成真实 QQ 环境端到端验证。
 
 ## 模块边界
 
@@ -14,6 +14,7 @@ SnowLuma / QQ 通道负责收发；OpenClaw 负责会话和工具调用；大肥
 - `src/providers/index.js` 是管理员配置选用供应商的注册表；`agnes.js`、`mimo.js`、`siliconflow.js` 各自实现对应服务的协议，`shared.js` 放公共的凭据读取、响应处理和文件保存。已有本地能力保留在 `comfy.js` 和 `tts.js`。
 - 新增图片、视频或 TTS 供应商时，增加独立适配器，在注册表中登记，再扩展配置 schema、教程和针对真实协议的测试。供应商由管理员配置选择，聊天模型不能直接选择密钥或任意服务地址。
 - 新增不属于现有媒体类型的功能，应独立实现模块，并在 `src/index.js` 显式注册和校验权限；按需增加配置开关和教程。这是代码级模块化，当前不是可热安装的第三方模块市场。
+- 看视频功能由 `src/video-watch.js`、`python/video_context_helper.py` 和固定版本的 `vendor/video-context-builder` 构成；技能入口位于 `skills/fatfish-watch-video`，默认关闭且使用独立的 QQ 用户权限。
 - 可选功能默认关闭；聊天模型由 OpenClaw 管理，硅基流动 STT 通过 OpenClaw 媒体理解供应商接口注册。密钥在 Gateway 环境变量中提供。
 
 ## 后续设计

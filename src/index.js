@@ -1,9 +1,11 @@
 import { definePluginEntry } from 'openclaw/plugin-sdk/plugin-entry';
+import { readRemoteMediaBuffer } from 'openclaw/plugin-sdk/media-runtime';
 import { canUse, createPolicyStore, makeAdminCommand } from './permissions.js';
 import { generateMedia, synthesizeSpeech } from './providers/index.js';
 import { transcribeSilicon } from './providers/siliconflow.js';
 import { createPersonaStore, makePersonaHook } from './persona.js';
 import { createBlacklistStore, makeBlacklistHook } from './blacklist.js';
+import { buildVideoContext } from './video-watch.js';
 
 export default definePluginEntry({
   id: 'fatfish',
@@ -62,6 +64,28 @@ export default definePluginEntry({
         }
       }), { name, optional: true, promptGuidance: `用户明确请求生成${kind === 'image' ? '图片' : '视频'}时可调用 ${name}；权限由工具检查。` });
     }
+    let watching = false;
+    api.registerTool(ctx => ({
+      name: 'fatfish_watch_video',
+      label: '大肥鱼看视频',
+      description: '分析用户明确提供的 HTTPS 视频文件直链：采样画面并可转写音频。仅接收视频文件直链，不能处理普通网页或服务器本地路径。',
+      parameters: {
+        type: 'object', additionalProperties: false,
+        properties: { url: { type: 'string', minLength: 1, maxLength: 4096 }, question: { type: 'string', minLength: 1, maxLength: 1000 } },
+        required: ['url', 'question']
+      },
+      async execute(_id, params) {
+        const identity = { channel: ctx.messageChannel, senderId: ctx.requesterSenderId };
+        if (!canUse(identity, admins, await store.read(), 'watch')) throw new Error('当前 QQ 用户没有使用看视频功能的权限，或身份不可验证。');
+        if (watching) throw new Error('已有视频正在分析，请稍后再试。');
+        watching = true;
+        try {
+          const result = await buildVideoContext({ ...params, config: api.pluginConfig?.watchVideo, commonStt: api.pluginConfig?.stt, fetchMedia: readRemoteMediaBuffer });
+          if (!canUse(identity, admins, await store.read(), 'watch')) throw new Error('分析期间权限发生变化，无法返回结果。');
+          return result;
+        } finally { watching = false; }
+      }
+    }), { name: 'fatfish_watch_video', optional: true, promptGuidance: '用户明确要求分析并提供 HTTPS 视频文件直链时可调用 fatfish_watch_video。只根据返回的抽样图像和转写回答；QQ 视频附件和网页链接不等同于直链。' });
     api.registerTool({
       name: 'fatfish_tts',
       label: '大肥鱼语音合成',
