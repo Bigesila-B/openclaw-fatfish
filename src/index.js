@@ -6,6 +6,7 @@ import { transcribeSilicon } from './providers/siliconflow.js';
 import { createPersonaStore, makePersonaHook } from './persona.js';
 import { createBlacklistStore, makeBlacklistHook } from './blacklist.js';
 import { buildVideoContext } from './video-watch.js';
+import { installVideoSkill, resolveVideoSkill } from './video-skill-install.js';
 
 export default definePluginEntry({
   id: 'fatfish',
@@ -14,9 +15,16 @@ export default definePluginEntry({
   register(api) {
     if (['full', 'discovery', 'cli-metadata'].includes(api.registrationMode ?? 'full')) {
       api.registerCli(({ program }) => {
-        program.command('fatfish').description('大肥鱼 QQ 机器人配置').command('setup').description('交互式配置 QQ 接入').action(async () => {
+        const command = program.command('fatfish').description('大肥鱼 QQ 机器人配置');
+        command.command('setup').description('交互式配置 QQ 接入').action(async () => {
           try { const { startWizard } = await import('./wizard.js'); const result = await startWizard(); if (!result.completed) process.exitCode = 1; }
           catch (error) { console.error(`配置向导未完成：${error.message}`); process.exitCode = 1; }
+        });
+        command.command('install-video-skill').description('下载或更新最新版看视频引擎').action(async () => {
+          try {
+            const installed = await installVideoSkill(api.runtime.state.resolveStateDir());
+            console.log(`看视频引擎已安装：${installed.commit}。配置教程：docs/video-watch.md`);
+          } catch (error) { console.error(`看视频引擎安装失败：${error.message}`); process.exitCode = 1; }
         });
       }, { descriptors: [{ name: 'fatfish', description: '大肥鱼 QQ 机器人配置', hasSubcommands: true }] });
       if (api.registrationMode === 'cli-metadata') return;
@@ -77,10 +85,12 @@ export default definePluginEntry({
       async execute(_id, params) {
         const identity = { channel: ctx.messageChannel, senderId: ctx.requesterSenderId };
         if (!canUse(identity, admins, await store.read(), 'watch')) throw new Error('当前 QQ 用户没有使用看视频功能的权限，或身份不可验证。');
+        if (api.pluginConfig?.watchVideo?.enabled !== true) throw new Error('看视频功能未启用，请查看配置教程。');
         if (watching) throw new Error('已有视频正在分析，请稍后再试。');
         watching = true;
         try {
-          const result = await buildVideoContext({ ...params, config: api.pluginConfig?.watchVideo, commonStt: api.pluginConfig?.stt, fetchMedia: readRemoteMediaBuffer });
+          const engine = await resolveVideoSkill(stateDir);
+          const result = await buildVideoContext({ ...params, config: api.pluginConfig?.watchVideo, commonStt: api.pluginConfig?.stt, skillDir: engine.path, fetchMedia: readRemoteMediaBuffer });
           if (!canUse(identity, admins, await store.read(), 'watch')) throw new Error('分析期间权限发生变化，无法返回结果。');
           return result;
         } finally { watching = false; }

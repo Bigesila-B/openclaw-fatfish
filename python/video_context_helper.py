@@ -1,18 +1,22 @@
-"""Isolated adapter for the vendored Video Context Builder (MIT)."""
+"""Adapter for the administrator-installed Video Context Builder."""
 import json
 import os
 import sys
 from pathlib import Path
 
-os.environ['FATFISH_RESTRICT_MEDIA'] = '1'
-scripts = Path(__file__).resolve().parents[1] / 'vendor' / 'video-context-builder' / 'scripts'
-sys.path.insert(0, str(scripts))
-from probe_video import probe_video
-from build_video_context import build_video_context
-
-
 def main():
     payload = json.load(sys.stdin)
+    scripts = Path(payload['skillDir']) / 'scripts'
+    sys.path.insert(0, str(scripts))
+    import ffmpeg_utils
+    original_run = ffmpeg_utils.run
+    def guarded_run(cmd, *args, **kwargs):
+        command = list(cmd)
+        command[1:1] = ['-protocol_whitelist', 'file,pipe']
+        return original_run(command, *args, **kwargs)
+    ffmpeg_utils.run = guarded_run
+    from probe_video import probe_video
+    from build_video_context import build_video_context
     video = payload['video']
     meta = probe_video(video)
     if meta['duration'] > payload['maxDurationSeconds']:

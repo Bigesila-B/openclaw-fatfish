@@ -14,7 +14,7 @@ SnowLuma / QQ 通道负责收发；OpenClaw 负责会话和工具调用；大肥
 - `src/providers/index.js` 是管理员配置选用供应商的注册表；`agnes.js`、`mimo.js`、`siliconflow.js` 各自实现对应服务的协议，`shared.js` 放公共的凭据读取、响应处理和文件保存。已有本地能力保留在 `comfy.js` 和 `tts.js`。
 - 新增图片、视频或 TTS 供应商时，增加独立适配器，在注册表中登记，再扩展配置 schema、教程和针对真实协议的测试。供应商由管理员配置选择，聊天模型不能直接选择密钥或任意服务地址。
 - 新增不属于现有媒体类型的功能，应独立实现模块，并在 `src/index.js` 显式注册和校验权限；按需增加配置开关和教程。这是代码级模块化，当前不是可热安装的第三方模块市场。
-- 看视频功能由 `src/video-watch.js`、`python/video_context_helper.py` 和固定版本的 `vendor/video-context-builder` 构成；技能入口位于 `skills/fatfish-watch-video`，默认关闭且使用独立的 QQ 用户权限。
+- 看视频功能由 `src/video-watch.js`、`python/video_context_helper.py` 以及从 GitHub 安装的 Video Context Builder 构成；技能入口位于 `skills/fatfish-watch-video`，默认关闭且使用独立的 QQ 用户权限。
 - 可选功能默认关闭；聊天模型由 OpenClaw 管理，硅基流动 STT 通过 OpenClaw 媒体理解供应商接口注册。密钥在 Gateway 环境变量中提供。
 
 ## 后续设计

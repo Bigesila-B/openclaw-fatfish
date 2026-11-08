@@ -50,7 +50,7 @@ function runHelper(python, payload, timeoutMs) {
   });
 }
 
-export async function buildVideoContext({ url, question, config = {}, commonStt = {}, fetchMedia, run = runHelper }) {
+export async function buildVideoContext({ url, question, config = {}, commonStt = {}, skillDir, fetchMedia, run = runHelper }) {
   if (config.enabled !== true) throw new Error('看视频功能未启用，请查看配置教程。');
   if (typeof question !== 'string' || !question.trim() || question.length > 1000) throw new Error('视频问题须为 1 至 1000 字符。');
   let parsed; try { parsed = new URL(url); } catch { throw new Error('请提供可直接下载的 HTTPS 视频地址。'); }
@@ -69,7 +69,7 @@ export async function buildVideoContext({ url, question, config = {}, commonStt 
     const assets = join(root, 'assets');
     await mkdir(assets, { mode: 0o700 });
     await writeFile(video, media.buffer, { mode: 0o600, flag: 'wx' });
-    await run(config.python || 'python', { video, output, assets, stt, question, maxDurationSeconds: config.maxDurationSeconds ?? 120, maxTokens: config.maxTokens ?? 8000 }, (config.timeoutSeconds ?? 180) * 1000);
+    await run(config.python || 'python', { video, output, assets, stt, question, skillDir, maxDurationSeconds: config.maxDurationSeconds ?? 120, maxTokens: config.maxTokens ?? 8000 }, (config.timeoutSeconds ?? 180) * 1000);
     const info = await readFile(output, 'utf8');
     if (Buffer.byteLength(info) > 2 * 1024 * 1024) throw new Error('视频上下文过大。');
     const result = JSON.parse(info);
