@@ -1,7 +1,7 @@
 import { definePluginEntry } from 'openclaw/plugin-sdk/plugin-entry';
-import { synthesize } from './tts.js';
 import { canUse, createPolicyStore, makeAdminCommand } from './permissions.js';
-import { generateComfy } from './comfy.js';
+import { generateMedia, synthesizeSpeech } from './providers/index.js';
+import { transcribeSilicon } from './providers/siliconflow.js';
 import { createPersonaStore, makePersonaHook } from './persona.js';
 import { createBlacklistStore, makeBlacklistHook } from './blacklist.js';
 
@@ -25,13 +25,24 @@ export default definePluginEntry({
     const store = createPolicyStore(stateDir);
     const blacklistStore = createBlacklistStore(stateDir, api.pluginConfig?.blacklist);
     const personaStore = createPersonaStore(stateDir, api.pluginConfig?.persona);
+    if (api.pluginConfig?.stt?.enabled === true) {
+      api.registerMediaUnderstandingProvider({
+        id: 'fatfish-siliconflow', capabilities: ['audio'],
+        defaultModels: { audio: api.pluginConfig.stt.model ?? 'TeleAI/TeleSpeechASR' },
+        resolveAuth: () => process.env.SILICONFLOW_API_KEY ? { kind: 'api-key', apiKey: process.env.SILICONFLOW_API_KEY, source: 'SILICONFLOW_API_KEY' } : null,
+        transcribeAudio: transcribeSilicon
+      });
+    }
     api.on('before_dispatch', makeBlacklistHook(blacklistStore, api.logger));
     api.on('before_prompt_build', makePersonaHook(personaStore, api.logger));
     let generating = false;
     const generate = async (kind, prompt) => {
       if (generating) throw new Error('已有生成任务正在运行，请稍后再试。');
       generating = true;
-      try { return await generateComfy(prompt, { ...api.pluginConfig?.[kind], kind }); }
+      try {
+        const options = api.pluginConfig?.[kind] ?? {};
+        return await generateMedia(kind, prompt, options);
+      }
       finally { generating = false; }
     };
     api.registerCommand(makeAdminCommand({ admins, store, generate, personaStore, blacklistStore }));
@@ -40,7 +51,7 @@ export default definePluginEntry({
       api.registerTool((ctx) => ({
         name,
         label: kind === 'image' ? '大肥鱼生图' : '大肥鱼生视频',
-        description: `按照用户明确意图使用管理员配置的本机 ComfyUI 工作流生成${kind === 'image' ? '图片' : '视频'}。仅当用户获授权时才会运行。`,
+        description: `按照用户明确意图使用管理员配置的服务生成${kind === 'image' ? '图片' : '视频'}。仅当用户获授权时才会运行。`,
         parameters: { type: 'object', additionalProperties: false, properties: { prompt: { type: 'string', minLength: 1, maxLength: 2000 } }, required: ['prompt'] },
         async execute(_id, params) {
           const identity = { channel: ctx.messageChannel, senderId: ctx.requesterSenderId };
@@ -54,7 +65,7 @@ export default definePluginEntry({
     api.registerTool({
       name: 'fatfish_tts',
       label: '大肥鱼语音合成',
-      description: '使用已配置的 Edge TTS 把用户请求的文字合成为语音文件。完成后通过支持的消息工具发送音频；不能保证所有 QQ 通道支持语音消息。',
+      description: '使用管理员配置的语音服务把用户请求的文字合成为语音文件。完成后通过支持的消息工具发送音频；不能保证所有 QQ 通道支持语音消息。',
       parameters: {
         type: 'object',
         additionalProperties: false,
@@ -63,7 +74,7 @@ export default definePluginEntry({
       },
       async execute(_id, params) {
         if (config.enabled !== true) throw new Error('TTS 未启用。请查看 docs/tts.md 完成配置。');
-        const result = await synthesize(params.text, config);
+        const result = await synthesizeSpeech(params.text, config);
         return {
           content: [{ type: 'text', text: `语音已生成：${result.filePath}。如当前通道支持，请通过消息工具发送此音频；发送失败时告知用户。` }],
           details: result

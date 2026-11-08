@@ -2,9 +2,30 @@
   "id": "fatfish",
   "name": "大肥鱼 QQ 伙伴",
   "description": "Free-first optional capabilities for OpenClaw QQ bots (early alpha)",
-  "cliCommands": ["fatfish"],
-  "contracts": { "tools": ["fatfish_tts", "fatfish_generate_image", "fatfish_generate_video"] },
-  "toolMetadata": { "fatfish_tts": { "optional": true }, "fatfish_generate_image": { "optional": true }, "fatfish_generate_video": { "optional": true } },
+  "cliCommands": [
+    "fatfish"
+  ],
+  "contracts": {
+    "tools": [
+      "fatfish_tts",
+      "fatfish_generate_image",
+      "fatfish_generate_video"
+    ],
+    "mediaUnderstandingProviders": [
+      "fatfish-siliconflow"
+    ]
+  },
+  "toolMetadata": {
+    "fatfish_tts": {
+      "optional": true
+    },
+    "fatfish_generate_image": {
+      "optional": true
+    },
+    "fatfish_generate_video": {
+      "optional": true
+    }
+  },
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -12,49 +33,181 @@
       "admins": {
         "type": "array",
         "description": "可信 SnowLuma 通道管理员 QQ 号；没有默认管理员",
-        "items": { "type": "string", "pattern": "^[0-9]{5,15}$" },
+        "items": {
+          "type": "string",
+          "pattern": "^[0-9]{5,15}$"
+        },
         "uniqueItems": true,
         "default": []
       },
-      "image": { "$ref": "#/$defs/comfy" },
-      "video": { "$ref": "#/$defs/comfy" },
+      "image": {
+        "$ref": "#/$defs/generation"
+      },
+      "video": {
+        "$ref": "#/$defs/generation"
+      },
       "blacklist": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "users": { "type": "array", "items": { "type": "string", "pattern": "^[0-9]{5,15}$" }, "uniqueItems": true, "maxItems": 1000 },
-          "groups": { "type": "array", "items": { "type": "string", "pattern": "^[0-9]{5,15}$" }, "uniqueItems": true, "maxItems": 1000 }
+          "users": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[0-9]{5,15}$"
+            },
+            "uniqueItems": true,
+            "maxItems": 1000
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[0-9]{5,15}$"
+            },
+            "uniqueItems": true,
+            "maxItems": 1000
+          }
         }
       },
       "persona": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "enabled": { "type": "boolean", "default": false },
-          "prompt": { "type": "string", "maxLength": 1500, "default": "" }
+          "enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "prompt": {
+            "type": "string",
+            "maxLength": 1500,
+            "default": ""
+          }
         }
       },
       "tts": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "enabled": { "type": "boolean", "default": false },
-          "python": { "type": "string", "minLength": 1, "default": "python" },
-          "voice": { "type": "string", "minLength": 1, "default": "zh-CN-XiaoxiaoNeural" }
+          "enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "python": {
+            "type": "string",
+            "minLength": 1,
+            "default": "python"
+          },
+          "voice": {
+            "type": "string",
+            "minLength": 1
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "edge",
+              "mimo"
+            ],
+            "default": "edge"
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "cloneModel": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "cloneSamplePath": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "stt": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          }
         }
       }
     },
     "$defs": {
-      "comfy": {
-        "type": "object", "additionalProperties": false,
+      "generation": {
+        "type": "object",
+        "additionalProperties": false,
         "properties": {
-          "enabled": { "type": "boolean", "default": false },
-          "url": { "type": "string", "default": "http://127.0.0.1:8188" },
-          "workflowPath": { "type": "string" },
-          "promptNode": { "type": "string" },
-          "promptInput": { "type": "string", "default": "text" },
-          "outputNode": { "type": "string" },
-          "timeoutSeconds": { "type": "integer", "minimum": 5, "maximum": 600 }
+          "enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "url": {
+            "type": "string",
+            "default": "http://127.0.0.1:8188"
+          },
+          "workflowPath": {
+            "type": "string"
+          },
+          "promptNode": {
+            "type": "string"
+          },
+          "promptInput": {
+            "type": "string",
+            "default": "text"
+          },
+          "outputNode": {
+            "type": "string"
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 600
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "comfy",
+              "agnes"
+            ],
+            "default": "comfy"
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "size": {
+            "type": "string",
+            "enum": [
+              "1K",
+              "2K",
+              "3K",
+              "4K"
+            ]
+          },
+          "seconds": {
+            "type": "integer",
+            "minimum": 4,
+            "maximum": 12
+          },
+          "allowedDownloadHosts": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9.-]+$"
+            },
+            "maxItems": 20
+          }
         }
       }
     }
