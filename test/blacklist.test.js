@@ -48,6 +48,8 @@ test('administrator changes persist and blocked users cannot invoke commands', a
   assert.doesNotMatch(groupList.text, /111111|222222/);
   assert.deepEqual(await cmd.handler({ ...admin, senderId: '111111', args: 'permissions' }), {});
   assert.deepEqual(await cmd.handler({ ...admin, from: 'snowluma:group:222222', args: 'permissions' }), {});
+  assert.deepEqual(await cmd.handler({ ...admin, senderId: '111111', args: 'help' }), {});
+  assert.deepEqual(await cmd.handler({ ...admin, from: 'snowluma:group:222222', args: 'help' }), {});
   await cmd.handler({ ...admin, args: 'blacklist remove user 111111' });
   assert.deepEqual(await blacklistStore.read(), { users: [], groups: ['222222'] });
 });

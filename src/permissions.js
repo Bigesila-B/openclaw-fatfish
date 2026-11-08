@@ -4,6 +4,25 @@ import { randomUUID } from 'node:crypto';
 import { shouldBlock } from './blacklist.js';
 
 const capabilities = ['image', 'video', 'watch', 'sticker'];
+const helpText = [
+  '🐟 大肥鱼指令列表',
+  '/fish 或 /fish help — 查看指令列表',
+  '/fish image 提示词 — 生成图片',
+  '/fish video 提示词 — 生成视频',
+  '/fish sticker 关键词 — 发送匹配的表情包',
+  '',
+  '以下指令仅管理员可操作：',
+  '/fish permissions — 查看普通用户权限',
+  '/fish allow image|video|watch|sticker on|off — 设置权限',
+  '/fish persona status — 查看人格状态',
+  '/fish persona set 人格描述 — 设置人格',
+  '/fish persona on|off|reset — 启用、关闭或恢复人格',
+  '/fish blacklist list — 查看黑名单',
+  '/fish blacklist add|remove user|group 号码 — 管理黑名单',
+  '',
+  '看视频和语音可通过自然语言请求；功能需先配置、启用并授权。竖线表示选一项。',
+  '服务器终端命令：openclaw fatfish --help'
+].join('\n');
 
 export function isAdmin(identity, admins) {
   return identity?.channel === 'snowluma' && typeof identity.senderId === 'string' &&
@@ -55,7 +74,7 @@ export function createPolicyStore(stateDir) {
 export function makeAdminCommand({ admins, store, generate, personaStore, blacklistStore, stickerStore, stickerCooldown, stickerConfig }) {
   return {
     name: 'fish',
-    description: '大肥鱼管理员权限设置',
+    description: '大肥鱼指令列表与功能管理',
     acceptsArgs: true,
     requireAuth: true,
     async handler(ctx) {
@@ -64,6 +83,11 @@ export function makeAdminCommand({ admins, store, generate, personaStore, blackl
         try {
           if (shouldBlock(await blacklistStore.read(), { ...identity, conversationId: ctx.from })) return {};
         } catch { return {}; }
+      }
+      const commandArgs = (ctx.args ?? '').trim();
+      if (commandArgs === '' || commandArgs === 'help') {
+        if (ctx.isAuthorizedSender !== true || identity.channel !== 'snowluma' || typeof identity.senderId !== 'string' || !/^[0-9]{5,15}$/.test(identity.senderId)) return { text: '当前 QQ 用户未通过通道授权，或身份不可验证。' };
+        return { text: helpText };
       }
       const stickerMatch = /^sticker\s+([\s\S]+)$/.exec((ctx.args ?? '').trim());
       if (stickerMatch) {
@@ -124,7 +148,7 @@ export function makeAdminCommand({ admins, store, generate, personaStore, blackl
         return { text: action === 'reset' ? '已恢复配置文件中的人格设置。' : '人格设置已保存，后续 QQ 聊天生效；是否应用还取决于 OpenClaw 钩子权限。' };
       }
       const args = (ctx.args ?? '').trim().split(/\s+/);
-      if (args.length === 1 && (args[0] === '' || args[0] === 'permissions')) {
+      if (args.length === 1 && args[0] === 'permissions') {
         const policy = await store.read();
         return { text: `普通用户权限：生图 ${policy.image ? '允许' : '禁止'}；生视频 ${policy.video ? '允许' : '禁止'}；看视频 ${policy.watch ? '允许' : '禁止'}；表情包 ${policy.sticker ? '允许' : '禁止'}。功能仍须由管理员配置并启用。用法：/fish allow image|video|watch|sticker on|off` };
       }

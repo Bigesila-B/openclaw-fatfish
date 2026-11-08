@@ -21,6 +21,8 @@
 
 ## QQ 中管理
 
+发送 `/fish help` 或 `/fish` 查看所有已实现的 QQ 指令，详见[指令列表](commands.md)。
+
 经 SnowLuma 通道授权的管理员可在 QQ 发送：
 
 ```text

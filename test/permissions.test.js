@@ -15,6 +15,25 @@ test('QQ identity and channel are both required', () => {
   assert.equal(canUse({ channel: 'other', senderId: '345678' }, admins, { image: true }, 'image'), false);
 });
 
+test('help and the bare command list implemented QQ commands without changing permissions', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'fatfish-policy-test-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const store = createPolicyStore(root);
+  const command = makeAdminCommand({ admins: ['123456'], store });
+  const ctx = { channel: 'snowluma', senderId: '111111', isAuthorizedSender: true };
+  const bare = await command.handler({ ...ctx, args: '' });
+  const help = await command.handler({ ...ctx, args: 'help' });
+  assert.equal(bare.text, help.text);
+  for (const name of ['image', 'video', 'sticker', 'permissions', 'allow', 'persona', 'blacklist']) assert.match(help.text, new RegExp(`/fish ${name}`));
+  assert.match(help.text, /仅管理员/);
+  assert.doesNotMatch(help.text, /\/fish status/);
+  assert.deepEqual(await store.read(), { image: false, video: false, watch: false, sticker: false });
+  assert.match((await command.handler({ ...ctx, isAuthorizedSender: false, args: 'help' })).text, /未通过/);
+  assert.match((await command.handler({ ...ctx, senderId: undefined, args: 'help' })).text, /未通过/);
+  assert.match((await command.handler({ ...ctx, channel: 'other', args: 'help' })).text, /未通过/);
+  assert.match((await command.handler({ ...ctx, args: 'permissions' })).text, /仅限/);
+});
+
 test('only authorized admins can change persistent permissions', async t => {
   const root = await mkdtemp(join(tmpdir(), 'fatfish-policy-test-'));
   t.after(() => rm(root, { recursive: true, force: true }));
