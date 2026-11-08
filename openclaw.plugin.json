@@ -10,7 +10,9 @@
       "fatfish_tts",
       "fatfish_generate_image",
       "fatfish_generate_video",
-      "fatfish_watch_video"
+      "fatfish_watch_video",
+      "fatfish_sticker_search",
+      "fatfish_sticker_select"
     ],
     "mediaUnderstandingProviders": [
       "fatfish-siliconflow"
@@ -27,6 +29,12 @@
       "optional": true
     },
     "fatfish_watch_video": {
+      "optional": true
+    },
+    "fatfish_sticker_search": {
+      "optional": true
+    },
+    "fatfish_sticker_select": {
       "optional": true
     }
   },
@@ -213,6 +221,38 @@
                 ]
               }
             }
+          }
+        }
+      },
+      "stickers": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "autoSuggest": {
+            "type": "boolean",
+            "default": false
+          },
+          "maxEntries": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500,
+            "default": 64
+          },
+          "maxCandidates": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30,
+            "default": 12
+          },
+          "cooldownSeconds": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 86400,
+            "default": 60
           }
         }
       }

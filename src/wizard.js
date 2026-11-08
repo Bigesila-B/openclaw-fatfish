@@ -96,7 +96,7 @@ export async function runWizard(ui, cli, probe = probeTcp) {
     });
   }
   ui.print(`Agnes 聊天、生图和视频，MiMo TTS，以及硅基流动 STT 可以之后按教程配置：${guides}/cloud-providers.md。`);
-  ui.print(`可选看视频功能配置：${guides}/video-watch.md。`);
+  ui.print(`可选看视频功能配置：${guides}/video-watch.md；表情包功能配置：${guides}/stickers.md。`);
   if (await ui.confirm('现在从 GitHub 下载最新版看视频引擎？（需要 Git）', false)) {
     const code = await cli.interactive(['fatfish', 'install-video-skill']);
     if (code !== 0) ui.print('看视频引擎安装未完成；QQ 配置可继续，稍后可运行 openclaw fatfish install-video-skill 重试。');
