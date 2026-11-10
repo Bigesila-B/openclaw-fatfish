@@ -236,6 +236,38 @@ test('看视频在未启用时拒绝，启用但未安装引擎时给出明确�
   );
 });
 
+test('媒体解析默认关闭，开启后仍要求身份与站点校验', { skip: skipSdk }, async t => {
+  const off = await setup(t);
+  await assert.rejects(
+    toolMap(off).get('fatfish_parse_link').descriptor.execute('call-1', { url: 'https://www.bilibili.com/video/BV1xx' }),
+    /媒体解析未启用/
+  );
+
+  const on = await setup(t, { parse: { enabled: true }, admins: ['10001'] });
+  const anonymous = toolMap(on, { messageChannel: 'snowluma', sessionKey: 's0' }).get('fatfish_parse_link');
+  await assert.rejects(
+    anonymous.descriptor.execute('call-2', { url: 'https://www.bilibili.com/video/BV1xx' }),
+    /没有使用媒体解析的权限/
+  );
+
+  // 即使是管理员，也不能把任意地址交给 yt-dlp。
+  await assert.rejects(
+    toolMap(on).get('fatfish_parse_link').descriptor.execute('call-3', { url: 'https://example.com/x' }),
+    /暂不支持该站点/
+  );
+});
+
+test('管理员可以开关媒体解析并持久化', { skip: skipSdk }, async t => {
+  const { commands, stateDir } = await setup(t, { admins: ['10001'] });
+  const base = { channel: 'snowluma', senderId: '10001', from: 'private:10001', isAuthorizedSender: true };
+  assert.match((await commands[0].handler({ ...base, args: 'parse' })).text, /媒体解析：已关闭/);
+  assert.match((await commands[0].handler({ ...base, args: 'parse on' })).text, /已启用/);
+  const saved = JSON.parse(await readFile(join(stateDir, 'fatfish', 'parse.json'), 'utf8'));
+  assert.equal(saved.enabled, true);
+  assert.match((await commands[0].handler({ ...base, args: 'parse status' })).text, /已启用/);
+  assert.match((await commands[0].handler({ ...base, args: 'parse off' })).text, /已关闭/);
+});
+
 test('STT 供应商仅在启用时注册，缺少密钥时返回 null', { skip: skipSdk }, async t => {
   const off = await setup(t);
   assert.equal(off.mediaProviders.length, 0, '未启用 STT 时不应注册媒体理解供应商');

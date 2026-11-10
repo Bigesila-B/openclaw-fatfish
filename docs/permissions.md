@@ -37,10 +37,13 @@
 /fish allow sticker off
 /fish allow tts on
 /fish allow tts off
+/fish allow parse on
+/fish allow parse off
+/fish parse status
 /fish persona status
 ```
 
-初始时普通用户的生图、生视频、看视频、表情包和语音合成权限均为关闭。开关适用于本插件所有 QQ 会话，并独立控制各项能力；它们仅授予使用机会，还需功能已配置、启用且 OpenClaw 及通道允许调用。管理员默认可用已启用的功能。普通用户不能更改开关。插件只接受 OpenClaw 传递的 `snowluma` 通道和发送者 ID，缺少身份时拒绝，不能通过消息内容自称管理员。
+初始时普通用户的生图、生视频、看视频、表情包、语音合成和媒体解析权限均为关闭。开关适用于本插件所有 QQ 会话，并独立控制各项能力；它们仅授予使用机会，还需功能已配置、启用且 OpenClaw 及通道允许调用。管理员默认可用已启用的功能。普通用户不能更改开关。插件只接受 OpenClaw 传递的 `snowluma` 通道和发送者 ID，缺少身份时拒绝，不能通过消息内容自称管理员。
 
 变更保存在 OpenClaw 状态目录的 `fatfish/permissions.json`，重启保留。此 Alpha 暂不支持多个 Gateway 同时写入同一份文件、按群设置或按人设置额度。不要手动给予他人文件写权限。
 

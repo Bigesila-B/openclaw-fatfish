@@ -9,7 +9,8 @@
 | `/fish video 提示词` | 生成视频 | 管理员或已获授权的用户 |
 | `/fish sticker 关键词` | 查找并发送表情包 | 管理员或已获授权的用户 |
 | `/fish permissions` | 查看普通用户权限 | 管理员 |
-| `/fish allow image\|video\|watch\|sticker\|tts on\|off` | 设置功能权限 | 管理员 |
+| `/fish allow image\|video\|watch\|sticker\|tts\|parse on\|off` | 设置功能权限 | 管理员 |
+| `/fish parse status\|on\|off` | 开关媒体解析 | 管理员 |
 | `/fish persona status` | 查看人格状态 | 管理员 |
 | `/fish persona set 人格描述` | 设置人格 | 管理员 |
 | `/fish persona on\|off\|reset` | 启用、关闭或恢复人格 | 管理员 |

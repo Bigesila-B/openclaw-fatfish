@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { shouldBlock } from './blacklist.js';
 
-const capabilities = ['image', 'video', 'watch', 'sticker', 'tts'];
+const capabilities = ['image', 'video', 'watch', 'sticker', 'tts', 'parse'];
 const helpText = [
   '🐟 大肥鱼指令列表',
   '/fish 或 /fish help — 查看指令列表',
@@ -13,7 +13,8 @@ const helpText = [
   '',
   '以下指令仅管理员可操作：',
   '/fish permissions — 查看普通用户权限',
-  '/fish allow image|video|watch|sticker|tts on|off — 设置权限',
+  '/fish allow image|video|watch|sticker|tts|parse on|off — 设置权限',
+  '/fish parse status|on|off — 开关媒体解析',
   '/fish persona status — 查看人格状态',
   '/fish persona set 人格描述 — 设置人格',
   '/fish persona on|off|reset — 启用、关闭或恢复人格',
@@ -43,12 +44,12 @@ export function createPolicyStore(stateDir) {
     let raw;
     try { raw = await readFile(file, 'utf8'); }
     catch (error) {
-      if (error.code === 'ENOENT') return { image: false, video: false, watch: false, sticker: false, tts: false };
+      if (error.code === 'ENOENT') return { image: false, video: false, watch: false, sticker: false, tts: false, parse: false };
       throw error;
     }
     const obj = JSON.parse(raw);
-    if (!obj || typeof obj.image !== 'boolean' || typeof obj.video !== 'boolean' || (obj.watch !== undefined && typeof obj.watch !== 'boolean') || (obj.sticker !== undefined && typeof obj.sticker !== 'boolean') || (obj.tts !== undefined && typeof obj.tts !== 'boolean')) throw new Error('权限文件格式错误');
-    return { image: obj.image, video: obj.video, watch: obj.watch ?? false, sticker: obj.sticker ?? false, tts: obj.tts ?? false };
+    if (!obj || typeof obj.image !== 'boolean' || typeof obj.video !== 'boolean' || (obj.watch !== undefined && typeof obj.watch !== 'boolean') || (obj.sticker !== undefined && typeof obj.sticker !== 'boolean') || (obj.tts !== undefined && typeof obj.tts !== 'boolean') || (obj.parse !== undefined && typeof obj.parse !== 'boolean')) throw new Error('权限文件格式错误');
+    return { image: obj.image, video: obj.video, watch: obj.watch ?? false, sticker: obj.sticker ?? false, tts: obj.tts ?? false, parse: obj.parse ?? false };
   }
   function set(capability, enabled) {
     if (!capabilities.includes(capability) || typeof enabled !== 'boolean') return Promise.reject(new Error('无效权限'));
@@ -71,7 +72,7 @@ export function createPolicyStore(stateDir) {
   return { read, set };
 }
 
-export function makeAdminCommand({ admins, store, generate, personaStore, blacklistStore, stickerStore, stickerCooldown, stickerConfig }) {
+export function makeAdminCommand({ admins, store, generate, personaStore, blacklistStore, stickerStore, stickerCooldown, stickerConfig, parseState }) {
   return {
     name: 'fish',
     description: '大肥鱼指令列表与功能管理',
@@ -153,16 +154,26 @@ export function makeAdminCommand({ admins, store, generate, personaStore, blackl
         }
         return { text: action === 'reset' ? '已恢复配置文件中的人格设置。' : '人格设置已保存，后续 QQ 聊天生效；是否应用还取决于 OpenClaw 钩子权限。' };
       }
+      const parseMatch = /^parse(?:\s+(status|on|off))?$/.exec((ctx.args ?? '').trim());
+      if (parseMatch) {
+        if (!parseState) return { text: '媒体解析开关不可用。' };
+        const action = parseMatch[1] ?? 'status';
+        let enabled;
+        try { enabled = await parseState.read(); } catch { return { text: '媒体解析开关文件损坏，请检查状态目录中的 fatfish/parse.json。' }; }
+        if (action === 'status') return { text: `媒体解析：${enabled ? '已启用' : '已关闭'}。普通用户还需要 parse 权限（/fish allow parse on）。` };
+        await parseState.set(action === 'on');
+        return { text: `媒体解析已${action === 'on' ? '启用' : '关闭'}。` };
+      }
       const args = (ctx.args ?? '').trim().split(/\s+/);
       if (args.length === 1 && args[0] === 'permissions') {
         const policy = await store.read();
-        return { text: `普通用户权限：生图 ${policy.image ? '允许' : '禁止'}；生视频 ${policy.video ? '允许' : '禁止'}；看视频 ${policy.watch ? '允许' : '禁止'}；表情包 ${policy.sticker ? '允许' : '禁止'}；语音合成 ${policy.tts ? '允许' : '禁止'}。功能仍须由管理员配置并启用。用法：/fish allow image|video|watch|sticker|tts on|off` };
+        return { text: `普通用户权限：生图 ${policy.image ? '允许' : '禁止'}；生视频 ${policy.video ? '允许' : '禁止'}；看视频 ${policy.watch ? '允许' : '禁止'}；表情包 ${policy.sticker ? '允许' : '禁止'}；语音合成 ${policy.tts ? '允许' : '禁止'}；媒体解析 ${policy.parse ? '允许' : '禁止'}。功能仍须由管理员配置并启用。用法：/fish allow image|video|watch|sticker|tts|parse on|off` };
       }
       if (args.length !== 3 || args[0] !== 'allow' || !capabilities.includes(args[1]) || !['on', 'off'].includes(args[2])) {
         return { text: '用法：/fish permissions 或 /fish allow image|video|watch|sticker on|off' };
       }
       await store.set(args[1], args[2] === 'on');
-      return { text: `已${args[2] === 'on' ? '允许' : '禁止'}普通用户使用${{ image: '生图', video: '生视频', watch: '看视频', sticker: '表情包', tts: '语音合成' }[args[1]]}；功能仍须由管理员配置并启用。` };
+      return { text: `已${args[2] === 'on' ? '允许' : '禁止'}普通用户使用${{ image: '生图', video: '生视频', watch: '看视频', sticker: '表情包', tts: '语音合成', parse: '媒体解析' }[args[1]]}；功能仍须由管理员配置并启用。` };
     }
   };
 }

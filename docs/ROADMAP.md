@@ -49,6 +49,16 @@ openclaw --dev config validate
 - 因此它验证的是“给定 SDK 行为时的装配是否正确”，不能替代真实运行时验证。真实加载验证见上面的记录表。
 - 其余测试直接测模块本身，不依赖 OpenClaw。
 
+## 0.1.0-alpha.13
+
+- 新增媒体链接解析（`fatfish_parse_link`）：链接识别 → yt-dlp 解析 → 下载 → 缓存
+- `/fish parse status|on|off` 运行时开关，写入 `fatfish/parse.json` 并在重启后保留
+- 新增 `parse` 权限位，普通用户需 `/fish allow parse on`
+- 缓存清理：每小时检查一次，超过 `cacheTtlDays` 或 `cacheMaxMb` 时自动删除最旧文件，定时器 `unref`
+- 只放行内置/管理员配置的域名，拒绝带凭据的 URL、直播和播放列表
+
+> 实现说明：AstrBot 的 `astrbot_plugin_media_parser` 是 AGPLv3，直接移植会让本项目的 MIT 许可失效。这里保持独立实现，复用 yt-dlp（Unlicense）作为下载层。
+
 ## 0.1.0-alpha.12
 
 - 向导不再默认写入 `allowFrom`：群号留空表示不限制来源，任何人都能私聊、群里 @ 也能触发；只有填写群号时才收窄为「管理员私聊 + 指定群」
