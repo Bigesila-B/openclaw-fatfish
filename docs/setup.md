@@ -24,7 +24,7 @@ openclaw fatfish setup
 ## 向导会做什么
 
 1. 询问是否打开 OpenClaw 模型配置向导。已配置模型可以跳过；不会自动验证模型可用性。
-2. 引导安装 SnowLuma 和扫码登录，询问 OneBot WebSocket 地址、令牌、管理员 QQ 号和允许回复的群号。默认不填群号，只允许已填管理员发起私聊。
+2. 引导安装 SnowLuma 和扫码登录，询问 OneBot WebSocket 地址、令牌、管理员 QQ 号和群号。**群号留空表示不限制来源**：任何人都能私聊机器人，群里 @ 也能触发；填写群号后，通道只放行管理员私聊和这些群。真正的功能权限仍由 `admins` 和 `/fish allow` 控制，不受这里影响。
 3. 测试端口是否可连接。OpenClaw 在容器中时，`127.0.0.1` 指容器自己；远程未加密 `ws://` 不适合不可信网络。
 4. 如未安装，询问是否安装第三方 [openclaw-snowluma](https://github.com/t871631092/openclaw-snowluma) `0.9.0` 通道插件；如果已安装但关闭，会询问是否启用。安装可能修改 OpenClaw 的插件配置。
 5. 可选配置人格；TTS、生图和视频暂时通过各自教程另行配置。STT 已提供硅基流动接口（见[云模型教程](cloud-providers.md)第 5 节），但 QQ 语音输入链路尚未接通，配置 STT 不等于 QQ 语音已可自动识别。个人 QQ 令牌以隐藏方式输入，随后保存在 OpenClaw 配置文件中，应妥善保护该文件。
@@ -47,4 +47,5 @@ openclaw fatfish setup
 - 端口不可连接：确认 SnowLuma 已启动、OneBot 端口正确、容器/防火墙配置正确。
 - 写入预检失败：确认 SnowLuma 通道插件安装成功，再运行 `openclaw config validate`；避免把访问令牌贴到公开日志中。
 - 配置完成却不回复：检查 Gateway 日志、SnowLuma 登录状态、地址和令牌、模型可用性、允许列表及群聊 @ 规则。
+- 群里 @ 了但完全没反应：先查 `channels.snowluma.allowFrom`。这项**未设置表示允许所有来源**；一旦设置，就只放行列表内的 `private:<QQ>` 和 `group:<群号>`，被挡掉的消息在 Gateway 日志里没有任何记录。手改配置或旧版向导容易留下只含管理员私聊的白名单，把群全挡在外面。
 - 插件尚未提供自动安装 QQ/SnowLuma、自动扫码、自动验证真实消息或图形化安装器；本向导不会假称这些步骤已经完成。

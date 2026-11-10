@@ -21,7 +21,10 @@ export function parseWsUrl(raw) {
 }
 
 export function buildPatch({ wsUrl, token, admins, groups, persona }) {
-  const channel = { enabled: true, wsUrl, accessToken: token, allowFrom: [...admins.map(id => `private:${id}`), ...groups.map(id => `group:${id}`)] };
+  const channel = { enabled: true, wsUrl, accessToken: token };
+  // 只有显式填写群号时才收窄来源；留空表示不做通道级限制，
+  // 任何人都能私聊或在群里触发（真正的功能权限仍由 fatfish 的 admins 和 /fish allow 控制）。
+  if (groups.length) channel.allowFrom = [...admins.map(id => `private:${id}`), ...groups.map(id => `group:${id}`)];
   const entry = { config: { admins } };
   if (persona) {
     entry.config.persona = { enabled: true, prompt: persona };
@@ -56,7 +59,7 @@ export async function runWizard(ui, cli, probe = probeTcp) {
   if (!token && !await ui.confirm('令牌为空，仅在你的 SnowLuma 确实没有设置令牌时继续。继续？', false)) return { completed: false, reason: 'missing-token' };
   if (token.length > 4096 || /[\r\n\u0000]/.test(token)) throw new Error('令牌格式无效。');
   const admins = await ui.askValid('管理员 QQ 号，多个用逗号分隔', '', value => parseIds(value, true));
-  const groups = await ui.askValid('允许机器人回复的群号，多个用逗号分隔；留空仅管理员私聊', '', value => parseIds(value));
+  const groups = await ui.askValid('允许机器人回复的群号，多个用逗号分隔；留空表示不限制来源（任何人都能聊）', '', value => parseIds(value));
 
   ui.print('\n第 3 步：检测 SnowLuma WebSocket 端口……');
   if (!await probe(wsUrl)) {
@@ -105,8 +108,9 @@ export async function runWizard(ui, cli, probe = probeTcp) {
   const patch = buildPatch({ wsUrl, token, admins, groups, persona });
   ui.print('\n第 6 步：准备写入配置：');
   ui.print(`- QQ 通道地址：${wsUrl}`);
-  ui.print(`- 管理员：${admins.join('、')}；允许的群：${groups.length ? groups.join('、') : '无'}`);
-  ui.print('- 写入 SnowLuma 令牌；替换 QQ 通道的 allowFrom 和大肥鱼管理员列表。');
+  ui.print(`- 管理员：${admins.join('、')}`);
+  ui.print(`- 来源限制：${groups.length ? `仅管理员私聊与群 ${groups.join('、')}` : '不限制（任何人都能私聊，群里 @ 可触发）'}`);
+  ui.print('- 写入 SnowLuma 令牌；替换 QQ 通道的 allowFrom（仅在填写群号时）和大肥鱼管理员列表。');
   ui.print(`- 人格：${persona ? '启用并允许聊天提示钩子' : '不改动现有人格配置'}`);
   if (persona) ui.print('- 如果之前在 QQ 中设置过人格，该设置仍优先；可用 /fish persona reset 恢复配置文件中的人格。');
   ui.print('- 其他通道、模型与功能配置保留。已有同名 QQ 通道字段会被本次输入覆盖。');

@@ -1,6 +1,6 @@
 {
   "name": "openclaw-fatfish",
-  "version": "0.1.0-alpha.11",
+  "version": "0.1.0-alpha.12",
   "description": "Optional free-first media capabilities for OpenClaw QQ bots",
   "type": "module",
   "license": "MIT",

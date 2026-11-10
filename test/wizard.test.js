@@ -17,6 +17,10 @@ test('config patch only targets requested settings and does not grant optional t
   assert.deepEqual(patch.channels.snowluma.allowFrom, ['private:123456', 'group:345678']);
   assert.equal(patch.tools, undefined);
   assert.equal(patch.plugins.entries.fatfish.config.persona, undefined);
+
+  // 群号留空时不做通道级限制：任何人都能私聊，群里 @ 也能触发。
+  const open = buildPatch({ wsUrl: 'ws://localhost:3001/', token: 'token', admins: ['123456'], groups: [], persona: '' });
+  assert.equal(open.channels.snowluma.allowFrom, undefined);
 });
 
 test('wizard previews and applies the same patch without displaying the token', async () => {
