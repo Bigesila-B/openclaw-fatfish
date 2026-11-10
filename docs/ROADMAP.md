@@ -11,6 +11,7 @@
 | 2026-11-10 | OpenClaw 2026.11.2，`--dev` 隔离 profile | `plugins install --link` + `inspect --runtime` | `status=loaded`；6 个工具、`fish` 命令、`setup`/`install-video-skill`/`sticker` 子命令均已注册 |
 | 2026-11-10 | 同上 | `config validate` 与非法 `admins` 配置 | 合法配置通过；非法 QQ 号被 configSchema 拒绝 |
 | 2026-11-10 | 同上 | `openclaw fatfish install-video-skill` | 从上游仓库安装成功，记录到具体提交 |
+| 2026-11-10 | SnowLuma v2.4.2 + QQ 3.34 + OpenClaw 2026.11.2 | 真实 QQ 私聊发送 `/fish help` | 机器人返回指令列表；SnowLuma 日志可见入站事件与出站引用回复，指令链路打通 |
 
 复现方式（始终使用独立状态目录，不要直接改已有 QQ 配置）：
 
@@ -28,10 +29,18 @@ openclaw --dev config validate
 
 以下项目需要真实 SnowLuma + QQ 环境，当前仓库里任何“已支持”的表述都应视为待验证：
 
-- 真实 QQ 私聊、群聊的消息收发，以及 `before_dispatch`、`before_prompt_build` 钩子在真实消息上的触发
+- 模型回复：本次联调环境没有配置任何聊天模型，只验证了不经过模型的指令路径
+- `before_dispatch` 钩子在真实消息上的触发行为
+- 群聊消息收发，以及未 @ 机器人时能否观察到群消息
 - 图片、音频、视频发送到 QQ 的成功率与格式兼容性
-- 群消息在未 @ 机器人时是否可见，这决定群聊决策能否实现
 - 云端生成、语音服务的真实计费调用（当前测试全部使用桩响应）
+
+## 运行时注意（2026-11-10 联调发现）
+
+- **人格钩子默认被网关拦截。** 非内置插件必须显式配置 `plugins.entries.fatfish.hooks.allowConversationAccess=true`，否则启动日志会出现 `typed hook "before_prompt_build" blocked`，人格静默不生效。向导只在选择配置人格时写入该字段，手动改配置的人容易踩到。
+- **`--dev` 必须写在子命令前。** `openclaw --dev gateway run` 使用隔离状态目录；写成 `openclaw gateway run --dev` 会指向主状态目录，并因另一个网关占用而启动失败。
+- **同一状态目录只能有一个网关。** 重启前先停止旧进程，否则新进程只做参数校验就退出，旧进程仍在跑旧配置（配置热加载可能掩盖这一点）。
+- **SnowLuma 必须在 QQ 登录前注入。** 先登录再注入会一直停在 `loggedIn=false`；QQ 启动后 1 秒内注入即可正常进入 `online`。
 
 ## 测试策略
 

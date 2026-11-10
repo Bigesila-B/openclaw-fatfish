@@ -2,7 +2,7 @@
 
 面向 SnowLuma 私人 QQ 号和 OpenClaw 的免费优先、按需启用的开源项目。
 
-> **早期 Alpha：提供实验性的管理员权限、云端模型和本机 ComfyUI 接入。QQ 音频输入、媒体发送及视频生成尚未完成端到端验证；没有管理面板或 MaiBot 式自主聊天。尚未完成真实 ComfyUI + OpenClaw + SnowLuma + QQ 端到端验证，不建议作为稳定版使用。**
+> **早期 Alpha：提供实验性的管理员权限、云端模型和本机 ComfyUI 接入。2026-11-10 已在真实 SnowLuma + QQ 环境验证 `/fish` 指令收发，但模型回复、QQ 音频输入、媒体发送及视频生成仍未完成端到端验证；没有管理面板或 MaiBot 式自主聊天。不建议作为稳定版使用。**
 
 在 QQ 中发送 `/fish help` 或 `/fish` 可查看[已实现的指令](docs/commands.md)；具体能否调用仍由通道授权和功能权限决定。
 
@@ -15,7 +15,7 @@
 | STT 语音识别 | 实验性 | 硅基流动接口已验证；QQ 语音输入链路尚未完成 |
 | 看视频 | 实验性 | [可选视频理解技能](docs/video-watch.md)：HTTPS 视频直链、抽帧和可选 STT；QQ 视频附件未接通 |
 | 生图 / 生视频 | 实验性 | [Agnes 云端模型](docs/cloud-providers.md)或[本机 ComfyUI](docs/comfyui.md)；视频服务曾返回繁忙，QQ 端到端未验证 |
-| QQ 管理员 / 权限 | 实验性 | [配置 QQ 管理员与权限](docs/permissions.md)，需 QQ 通道传递可信发送者身份 |
+| QQ 管理员 / 权限 | 实验性 | [配置 QQ 管理员与权限](docs/permissions.md)，需 QQ 通道传递可信发送者身份；已在真实 QQ 私聊验证白名单与管理员身份生效 |
 | QQ 黑名单 | 实验性 | [屏蔽 QQ 用户和群](docs/blacklist.md)，需实际验证消息路由 |
 | 表情包 | 实验性 | [导入和选用表情包](docs/stickers.md)；默认关闭，QQ 发送尚未实测 |
 | 聊天人格 | 实验性 | [配置人格和说话风格](docs/persona.md)，支持管理员在 QQ 中调整 |
