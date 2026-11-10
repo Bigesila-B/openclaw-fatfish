@@ -55,33 +55,32 @@ export function normalizeInfo(info, url) {
   };
 }
 
-export async function probe(url, { bin, timeoutMs = 60000, run = runYtdlp } = {}) {
-  const { stdout } = await run(
-    ['-J', '--no-playlist', '--no-warnings', '--socket-timeout', '15', '--', url],
-    { bin, timeoutMs }
-  );
+export async function probe(url, { bin, timeoutMs = 60000, run = runYtdlp, cookiesFile } = {}) {
+  const args = ['-J', '--no-playlist', '--no-warnings', '--socket-timeout', '15'];
+  if (cookiesFile) args.push('--cookies', cookiesFile);
+  args.push('--', url);
+  const { stdout } = await run(args, { bin, timeoutMs });
   let info;
   try { info = JSON.parse(stdout); } catch { throw new Error('yt-dlp 返回的数据无法解析。'); }
   return normalizeInfo(info, url);
 }
 
-export async function download(url, { bin, dir, maxBytes, timeoutMs = 180000, run = runYtdlp } = {}) {
+export async function download(url, { bin, dir, maxBytes, timeoutMs = 180000, run = runYtdlp, cookiesFile } = {}) {
   const before = new Set(await readdir(dir).catch(error => {
     if (error.code === 'ENOENT') return [];
     throw error;
   }));
-  await run(
-    [
-      '-f', 'bv*+ba/b',
-      '--merge-output-format', 'mp4',
-      '--no-playlist', '--no-warnings', '--no-progress',
-      '--restrict-filenames',
-      '--max-filesize', String(maxBytes),
-      '-o', join(dir, '%(extractor)s-%(id)s.%(ext)s'),
-      '--', url
-    ],
-    { bin, timeoutMs }
-  );
+  const args = [
+    '-f', 'bv*+ba/b',
+    '--merge-output-format', 'mp4',
+    '--no-playlist', '--no-warnings', '--no-progress',
+    '--restrict-filenames',
+    '--max-filesize', String(maxBytes)
+  ];
+  // B站等平台对数据中心 IP 有风控，提供 Cookie 文件可以显著提高成功率。
+  if (cookiesFile) args.push('--cookies', cookiesFile);
+  args.push('-o', join(dir, '%(extractor)s-%(id)s.%(ext)s'), '--', url);
+  await run(args, { bin, timeoutMs });
   const after = await readdir(dir);
   const files = [];
   for (const name of after) {

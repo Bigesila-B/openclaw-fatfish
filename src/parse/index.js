@@ -3,9 +3,9 @@ import { probe, download } from './ytdlp.js';
 const MAX_DESCRIPTION_IN_TEXT = 300;
 
 export async function parseMediaLink(url, {
-  bin, cacheDir, maxBytes, maxDurationSeconds = 0, timeoutSeconds = 180, run
+  bin, cacheDir, maxBytes, maxDurationSeconds = 0, timeoutSeconds = 180, run, cookiesFile
 } = {}) {
-  const info = await probe(url, { bin, timeoutMs: 60000, run });
+  const info = await probe(url, { bin, timeoutMs: 60000, run, cookiesFile });
   if (info.isLive) throw new Error('不解析直播链接，请提供已结束的视频或图文内容。');
   if (maxDurationSeconds > 0 && info.duration > maxDurationSeconds) {
     throw new Error(`视频时长约 ${Math.round(info.duration)} 秒，超过上限 ${maxDurationSeconds} 秒。`);
@@ -15,7 +15,8 @@ export async function parseMediaLink(url, {
     dir: cacheDir,
     maxBytes,
     timeoutMs: timeoutSeconds * 1000,
-    run
+    run,
+    cookiesFile
   });
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
   return {

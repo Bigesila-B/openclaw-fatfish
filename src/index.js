@@ -189,7 +189,8 @@ export default definePluginEntry({
           cacheDir: dir,
           maxBytes: (parseConfig.maxFileMb ?? 200) * 1024 * 1024,
           maxDurationSeconds: parseConfig.maxDurationSeconds ?? 600,
-          timeoutSeconds: parseConfig.timeoutSeconds ?? 180
+          timeoutSeconds: parseConfig.timeoutSeconds ?? 180,
+          cookiesFile: parseConfig.cookiesFile
         });
         if (!canUse(identity, admins, await store.read(), 'parse')) throw new Error('解析期间权限发生变化，无法返回结果。');
         return {

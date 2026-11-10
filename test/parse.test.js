@@ -44,6 +44,15 @@ test('probe 使用参数数组调用 yt-dlp 并规范化元数据', async () => 
   });
 });
 
+test('配置 Cookie 文件时传给 yt-dlp', async () => {
+  let seen;
+  const run = async args => { seen = args; return { stdout: JSON.stringify(videoInfo), stderr: '' }; };
+  await probe('https://www.bilibili.com/video/BV1xx', { run, cookiesFile: '/tmp/cookies.txt' });
+  const index = seen.indexOf('--cookies');
+  assert.notEqual(index, -1);
+  assert.equal(seen[index + 1], '/tmp/cookies.txt');
+});
+
 test('拒绝播放列表和直播', async () => {
   assert.throws(() => normalizeInfo({ entries: [] }, 'https://x'), /播放列表/);
   const playlistRun = async () => ({ stdout: JSON.stringify({ entries: [{ id: 1 }] }), stderr: '' });

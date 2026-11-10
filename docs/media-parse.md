@@ -55,6 +55,7 @@ yt-dlp --version
 |---|---|---|
 | `enabled` | `false` | 初始开关；运行时可用 `/fish parse on\|off` 覆盖并持久化 |
 | `ytdlpPath` | `yt-dlp` | 可执行文件路径或命令名 |
+| `cookiesFile` | 无 | 可选的 Netscape 格式 Cookie 文件；B站等平台用数据中心 IP 访问会返回 412，提供 Cookie 能显著提高成功率 |
 | `maxFileMb` | `200` | 单个文件大小上限 |
 | `maxDurationSeconds` | `600` | 视频时长上限，`0` 表示不限制 |
 | `timeoutSeconds` | `180` | 单次下载超时 |
@@ -98,6 +99,7 @@ yt-dlp --version
 - **只支持内置或管理员配置的域名**，带账号密码的 URL 一律拒绝；避免把内网地址交给 yt-dlp。
 - **不支持直播和播放列表**，会直接报错。
 - 各平台的风控、地区限制、付费内容由 yt-dlp 决定，插件不做绕过；解析失败时会返回可操作的原因。
+- **B站返回 HTTP 412** 是它的风控（常见于云主机 IP）。导出浏览器 Cookie 为 Netscape 格式文件，在 `parse.cookiesFile` 里指向它即可；Cookie 属于账号凭据，注意文件权限，不要提交到仓库。
 - 下载的媒体保存在本机，发送是否成功取决于通道对文件/视频的支持。
 - 媒体解析需要模型支持工具调用；纯指令模式不会自动解析链接。
 - 当前只在 Linux 上做过链路验证，Windows 路径与编码场景尚未实测。

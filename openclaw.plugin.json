@@ -281,6 +281,11 @@
             "minLength": 1,
             "default": "yt-dlp"
           },
+          "cookiesFile": {
+            "type": "string",
+            "minLength": 1,
+            "description": "可选的 Netscape 格式 Cookie 文件路径，用于 B站等有风控的平台；文件应对 Gateway 可读且不对其他用户开放"
+          },
           "maxFileMb": {
             "type": "integer",
             "minimum": 1,
