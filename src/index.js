@@ -13,6 +13,7 @@ import { isSupported } from './parse/detect.js';
 import { parseMediaLink } from './parse/index.js';
 import { createParseState } from './parse/state.js';
 import { parseCacheDir, ensureCacheDir, startCacheJanitor } from './media-cache.js';
+import { installSnowluma } from './snowluma-install.js';
 
 export default definePluginEntry({
   id: 'fatfish',
@@ -26,8 +27,21 @@ export default definePluginEntry({
           try { const { startWizard } = await import('./wizard.js'); const result = await startWizard(); if (!result.completed) process.exitCode = 1; }
           catch (error) { console.error(`配置向导未完成：${error.message}`); process.exitCode = 1; }
         });
-        command.command('install-video-skill').description('下载或更新最新版看视频引擎').action(async () => {
-          try {
+        command.command('install-snowluma').description('下载并安装 SnowLuma（官方仓库优先，失败回退到备用仓库）')
+          .option('--dir <path>', '安装目录')
+          .action(async (opts) => {
+            try {
+              const snowlumaConfig = api.pluginConfig?.snowluma ?? {};
+              const result = await installSnowluma({
+                dir: opts.dir ?? snowlumaConfig.installDir,
+                sources: snowlumaConfig.sources?.length ? snowlumaConfig.sources : undefined
+              });
+              console.log(`SnowLuma ${result.tag} 已安装到 ${result.dir}`);
+              console.log(`来源：${result.source}；资产：${result.asset}；sha256 校验：${result.verified ? '通过' : '未提供校验文件'}`);
+              console.log('下一步：运行安装目录里的 launcher.sh，再按 docs/setup.md 接入 QQ 与 OneBot。');
+            } catch (error) { console.error(`SnowLuma 安装失败：${error.message}`); process.exitCode = 1; }
+          });
+        command.command('install-video-skill').description('下载或更新最新版看视频引擎').action(async () => {          try {
             const installed = await installVideoSkill(api.runtime.state.resolveStateDir());
             console.log(`看视频引擎已安装：${installed.commit}。配置教程：docs/video-watch.md`);
           } catch (error) { console.error(`看视频引擎安装失败：${error.message}`); process.exitCode = 1; }

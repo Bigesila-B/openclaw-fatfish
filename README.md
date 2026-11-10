@@ -44,6 +44,14 @@ openclaw fatfish setup
 
 非交互环境可能需要按 OpenClaw 提示在安装时添加 `--force`。`main` 会变化；生产环境建议改用审阅过的固定提交。
 
+也可以让插件自动下载 SnowLuma（官方仓库优先，不可用时回退到备用 fork，带 sha256 校验）：
+
+```bash
+openclaw fatfish install-snowluma
+```
+
+详见[配置向导教程](docs/setup.md)与[路线与验证记录](docs/ROADMAP.md)。
+
 ### 本地开发安装
 
 先将仓库下载到运行 OpenClaw 的机器，然后在该目录执行：

@@ -49,6 +49,13 @@ openclaw --dev config validate
 - 因此它验证的是“给定 SDK 行为时的装配是否正确”，不能替代真实运行时验证。真实加载验证见上面的记录表。
 - 其余测试直接测模块本身，不依赖 OpenClaw。
 
+## 0.1.0-alpha.14
+
+- 新增 `openclaw fatfish install-snowluma`：按「官方仓库 → 备用 fork → `snowluma.sources` 追加镜像」顺序解析 Release
+- 只接受与平台/架构匹配的非 lite 包；下载后用 `checksums.sha256` 校验，校验失败或包内出现绝对路径/`..` 直接中止
+- 先解压到临时目录验证启动脚本，成功后才替换现有安装，失败保留旧版本
+- `docs/setup.md` 与 README 补充用法；注意 GitHub 的 fork 不继承 Release 资产
+
 ## 0.1.0-alpha.13
 
 - 新增媒体链接解析（`fatfish_parse_link`）：链接识别 → yt-dlp 解析 → 下载 → 缓存

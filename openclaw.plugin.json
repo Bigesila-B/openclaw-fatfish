@@ -337,6 +337,23 @@
             "maxItems": 100
           }
         }
+      },
+      "snowluma": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "installDir": {
+            "type": "string",
+            "minLength": 1,
+            "description": "install-snowluma 的安装目录；留空使用 ~/snowluma/app"
+          },
+          "sources": {
+            "type": "array",
+            "description": "按顺序尝试的 GitHub 仓库（owner/repo）；留空表示官方仓库优先、失败回退到备用 fork",
+            "items": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+            "maxItems": 5
+          }
+        }
       }
     },
     "$defs": {

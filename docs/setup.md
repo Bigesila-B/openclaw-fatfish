@@ -19,6 +19,19 @@ openclaw plugins enable fatfish
 openclaw fatfish setup
 ```
 
+### 先装 SnowLuma（可选，自动下载）
+
+```bash
+openclaw fatfish install-snowluma
+openclaw fatfish install-snowluma --dir /opt/snowluma/app   # 指定目录
+```
+
+安装器按 **官方仓库 → 备用 fork → 配置里的镜像** 顺序查找 Release，只接受与当前平台/架构匹配的非 lite 包，下载后用 `checksums.sha256` 校验 sha256，再解压到临时目录验证启动脚本，成功后才替换现有安装。校验失败或包内路径可疑（绝对路径、`..`）会直接中止并保留旧版本。
+
+仓库顺序可用 `snowluma.sources` 覆盖（数组，元素形如 `owner/repo`），安装目录用 `snowluma.installDir` 固定。官方仓库已不可访问时，请确认备用 fork 是否上传了 Release 资产——**GitHub 的 fork 不会继承 Release**。
+
+安装完成后运行安装目录里的 `launcher.sh`（Windows 为 `launcher.bat`），WebUI 默认在 `http://127.0.0.1:5099`。
+
 安装前先审阅并信任代码。`main` 会变动；需要可复现安装时请换成审阅过的提交。若非交互安装提示第三方来源，检查来源后按 OpenClaw 提示操作。
 
 ## 向导会做什么
