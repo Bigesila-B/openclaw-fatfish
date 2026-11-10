@@ -16,6 +16,9 @@ export async function generateAgnes(kind, prompt, options = {}, fetchFn = fetch)
     return { filePath: await save(data, ext), kind };
   }
   if (kind !== 'video') throw new Error('不支持的生成类型。');
+  // 先确认允许下载的域名，避免创建了付费任务、轮询完成后又因为域名不在白名单而丢弃结果。
+  const hosts = Array.isArray(options.allowedDownloadHosts) ? options.allowedDownloadHosts : [];
+  if (!hosts.length) throw new Error('视频功能需要先配置 video.allowedDownloadHosts（服务商返回视频的域名），否则任务完成后无法取回结果。');
   const result = await jsonRequest(`${agnes}/v1/videos`, key, { model, prompt, seconds: String(options.seconds ?? 4), mode: 'text', size: '720P', aspect_ratio: '16:9' }, 120000, fetchFn);
   const id = result.video_id;
   if (typeof id !== 'string' || !/^[\w-]{1,200}$/.test(id)) throw new Error('服务没有返回可查询的视频编号，任务可能仍在执行；请勿盲目重试。');
@@ -25,11 +28,15 @@ export async function generateAgnes(kind, prompt, options = {}, fetchFn = fetch)
     const query = new URLSearchParams({ video_id: id, model_name: model });
     let status;
     try { status = await jsonRequest(`${agnes}/agnesapi?${query}`, key, undefined, 15000, fetchFn); }
-    catch { continue; } // Polling is read-only; retry until the deadline without creating another task.
+    catch (error) {
+      // 4xx 属于鉴权或参数错误，重试只会耗到超时，直接失败更好排查。
+      const httpStatus = Number(/HTTP (\d{3})/.exec(error?.message ?? '')?.[1]);
+      if (httpStatus >= 400 && httpStatus < 500) throw error;
+      continue; // 轮询是只读的，网络抖动或 5xx 可以继续等，但不会重复创建任务。
+    }
     if (status.status === 'failed') throw new Error(`视频任务 ${id} 生成失败。`);
     if (status.status !== 'completed') continue;
     let url; try { url = new URL(status.url); } catch { throw new Error(`视频任务 ${id} 已完成，但未返回有效地址。`); }
-    const hosts = options.allowedDownloadHosts ?? [];
     if (url.protocol !== 'https:' || url.username || url.password) throw new Error(`视频任务 ${id} 返回了无效的视频地址。`);
     if (!hosts.includes(url.hostname)) throw new Error(`视频任务 ${id} 已完成，视频域名 ${url.hostname} 尚未加入管理员允许列表；请查看云模型教程。`);
     return { filePath: url.href, taskId: id, kind };

@@ -105,6 +105,13 @@
             "type": "boolean",
             "default": false
           },
+          "cooldownSeconds": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 86400,
+            "default": 30,
+            "description": "同一会话两次语音合成之间的最小间隔；0 表示不限制"
+          },
           "python": {
             "type": "string",
             "minLength": 1,

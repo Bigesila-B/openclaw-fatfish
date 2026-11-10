@@ -46,10 +46,10 @@ test('administrator changes persist and blocked users cannot invoke commands', a
   assert.match((await cmd.handler({ ...admin, args: 'blacklist list' })).text, /111111/);
   const groupList = await cmd.handler({ ...admin, from: 'snowluma:group:444444', args: 'blacklist list' });
   assert.doesNotMatch(groupList.text, /111111|222222/);
-  assert.deepEqual(await cmd.handler({ ...admin, senderId: '111111', args: 'permissions' }), {});
-  assert.deepEqual(await cmd.handler({ ...admin, from: 'snowluma:group:222222', args: 'permissions' }), {});
-  assert.deepEqual(await cmd.handler({ ...admin, senderId: '111111', args: 'help' }), {});
-  assert.deepEqual(await cmd.handler({ ...admin, from: 'snowluma:group:222222', args: 'help' }), {});
+  assert.match((await cmd.handler({ ...admin, senderId: '111111', args: 'permissions' })).text, /黑名单/);
+  assert.match((await cmd.handler({ ...admin, from: 'snowluma:group:222222', args: 'permissions' })).text, /黑名单/);
+  assert.match((await cmd.handler({ ...admin, senderId: '111111', args: 'help' })).text, /黑名单/);
+  assert.match((await cmd.handler({ ...admin, from: 'snowluma:group:222222', args: 'help' })).text, /黑名单/);
   await cmd.handler({ ...admin, args: 'blacklist remove user 111111' });
   assert.deepEqual(await blacklistStore.read(), { users: [], groups: ['222222'] });
 });

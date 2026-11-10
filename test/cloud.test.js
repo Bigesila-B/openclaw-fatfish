@@ -30,7 +30,7 @@ test('Agnes sends a base64 image request and saves a validated file', async () =
 test('Agnes reports busy without automatically submitting again', async () => {
   process.env.AGNES_API_KEY = 'test-only';
   let calls = 0;
-  try { await assert.rejects(generateAgnes('video', 'fish', { enabled: true }, async () => { calls++; return new Response('', { status: 503 }); }), /503.*繁忙/); assert.equal(calls, 1); }
+  try { await assert.rejects(generateAgnes('video', 'fish', { enabled: true, allowedDownloadHosts: ['media.example.com'] }, async () => { calls++; return new Response('', { status: 503 }); }), /503.*繁忙/); assert.equal(calls, 1); }
   finally { delete process.env.AGNES_API_KEY; }
 });
 
@@ -72,5 +72,34 @@ test('Agnes polls a created video after a temporary query failure without resubm
       return json({ status: 'completed', url: 'https://media.example.com/fish.mp4' });
     });
     assert.equal(posts, 1); assert.equal(polls, 2); assert.equal(result.filePath, 'https://media.example.com/fish.mp4');
+  } finally { delete process.env.AGNES_API_KEY; }
+});
+
+test('Agnes refuses to create a paid video task when no download host is allowed', async () => {
+  process.env.AGNES_API_KEY = 'test-only';
+  let calls = 0;
+  try {
+    await assert.rejects(
+      generateAgnes('video', 'fish', { enabled: true }, async () => { calls++; return json({ video_id: 'job-1' }); }),
+      /allowedDownloadHosts/
+    );
+    assert.equal(calls, 0, '未配置允许域名时不应创建付费任务');
+  } finally { delete process.env.AGNES_API_KEY; }
+});
+
+test('Agnes stops polling on 4xx instead of waiting for the deadline', async () => {
+  process.env.AGNES_API_KEY = 'test-only';
+  let posts = 0, polls = 0;
+  try {
+    await assert.rejects(
+      generateAgnes('video', 'fish', { enabled: true, timeoutSeconds: 60, allowedDownloadHosts: ['media.example.com'] }, async (_url, init) => {
+        if (init.method === 'POST') { posts++; return json({ video_id: 'job-1' }); }
+        polls++;
+        return new Response('', { status: 401 });
+      }),
+      /HTTP 401/
+    );
+    assert.equal(posts, 1);
+    assert.equal(polls, 1, '4xx 属于配置问题，重试只会拖到超时');
   } finally { delete process.env.AGNES_API_KEY; }
 });

@@ -169,6 +169,29 @@ test('TTS 未启用时拒绝合成', { skip: skipSdk }, async t => {
   await assert.rejects(tts.descriptor.execute('call-1', { text: '你好' }), /TTS 未启用/);
 });
 
+test('TTS 启用后仍要求可验证身份和语音权限', { skip: skipSdk }, async t => {
+  const captured = await setup(t, { tts: { enabled: true }, admins: ['10001'] });
+
+  // 通道没有传可信发送者时不能放行，否则任何人都能反复触发计费接口。
+  const anonymous = toolMap(captured, { messageChannel: 'snowluma', sessionKey: 's0' }).get('fatfish_tts');
+  await assert.rejects(anonymous.descriptor.execute('call-1', { text: '你好' }), /没有使用语音合成的权限/);
+
+  // 非管理员默认没有 tts 权限，需要管理员显式开启。
+  const stranger = toolMap(captured, { messageChannel: 'snowluma', requesterSenderId: '20002', sessionKey: 's2' }).get('fatfish_tts');
+  await assert.rejects(stranger.descriptor.execute('call-2', { text: '你好' }), /没有使用语音合成的权限/);
+});
+
+test('管理员可以单独开启语音合成权限', { skip: skipSdk }, async t => {
+  const { commands, stateDir } = await setup(t, { admins: ['10001'] });
+  const reply = await commands[0].handler({
+    channel: 'snowluma', senderId: '10001', from: 'private:10001', args: 'allow tts on', isAuthorizedSender: true
+  });
+  assert.match(reply.text, /语音合成/);
+  const saved = JSON.parse(await readFile(join(stateDir, 'fatfish', 'permissions.json'), 'utf8'));
+  assert.equal(saved.tts, true);
+  assert.equal(saved.image, false, '只应改动被请求的那一项权限');
+});
+
 test('生成工具在身份不可验证或跨通道时 fail-closed', { skip: skipSdk }, async t => {
   const captured = await setup(t, { image: { enabled: true, provider: 'agnes' }, admins: ['10001'] });
 

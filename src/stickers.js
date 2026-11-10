@@ -95,15 +95,4 @@ export function createStickerStore(stateDir, maxEntries = 64) {
   return { add, remove, list, get, search, filesDir: files };
 }
 
-export function createStickerCooldown(intervalSeconds = 60, now = Date.now) {
-  const last = new Map();
-  return key => {
-    if (typeof key !== 'string' || !key) throw new Error('无法确定当前会话，不能发送表情。');
-    const timestamp = now();
-    const previous = last.get(key);
-    if (previous !== undefined && timestamp - previous < intervalSeconds * 1000) return false;
-    if (last.size >= 2000) for (const [k, t] of last) if (timestamp - t >= intervalSeconds * 1000) last.delete(k);
-    if (last.size >= 2000 && !last.has(key)) return false;
-    last.set(key, timestamp); return true;
-  };
-}
+export { createCooldown as createStickerCooldown } from './cooldown.js';

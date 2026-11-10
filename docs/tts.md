@@ -50,7 +50,7 @@ Linux/macOS：
 }
 ```
 
-根据本机 OpenClaw 版本应用配置并检查 `openclaw plugins inspect fatfish --runtime --json`。在可信的私聊中请求机器人把一句话转成语音，检查是否产生音频并能够通过通道发送。当前版本未经过真实 QQ 端到端验证；若通道不支持 MP3 或语音发送，需由通道侧适配，不能保证自动转换。
+根据本机 OpenClaw 版本应用配置并检查 `openclaw plugins inspect fatfish --runtime --json`。语音合成会真实计费，因此和其它能力一样受权限控制：管理员默认可用，普通用户需要管理员执行 `/fish allow tts on` 才能触发；同一会话默认 30 秒内只能合成一次，可用 `tts.cooldownSeconds` 调整（设为 0 关闭限频）。在可信的私聊中请求机器人把一句话转成语音，检查是否产生音频并能够通过通道发送。当前版本未经过真实 QQ 端到端验证；若通道不支持 MP3 或语音发送，需由通道侧适配，不能保证自动转换。
 
 ## 3. 关闭和排错
 

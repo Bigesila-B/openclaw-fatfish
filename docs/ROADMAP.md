@@ -48,6 +48,18 @@ openclaw --dev config validate
 - 因此它验证的是“给定 SDK 行为时的装配是否正确”，不能替代真实运行时验证。真实加载验证见上面的记录表。
 - 其余测试直接测模块本身，不依赖 OpenClaw。
 
+## 2026-11-10 安全修复（0.1.0-alpha.11）
+
+- 视频脚本子进程改为环境变量白名单，只透出当前配置 `keyEnv` 指定的那一个密钥，不再继承网关的 `AGNES_API_KEY`、`MIMO_API_KEY` 等凭据
+- 视频引擎改为固定提交安装：`git fetch --depth 1 <commit>` 后核对 `rev-parse HEAD`，与固定值不一致直接拒绝
+- 语音合成补上身份校验、`tts` 权限位（`/fish allow tts on|off`）和会话级限频（`tts.cooldownSeconds`，默认 30 秒）
+- 黑名单命令路径统一读取 `conversationId ?? from`；被拦截时返回明确文案，不再返回空对象
+- 表情包与语音合成共用同一份冷却实现，冷却键统一为会话，两个入口不能互相绕过
+- 工具返回给模型的文本不再包含服务器绝对路径，路径只放在 `details` 字段
+- Agnes 生视频在创建任务前校验 `allowedDownloadHosts`，避免扣费后丢弃结果；轮询遇到 4xx 立即失败
+
+仍未处理：Agnes 返回远程 URL 而非本地文件、视频 SSRF 边界依赖 SDK、MiMo 克隆样本只校验扩展名、向导的 OpenClaw 入口识别过窄。
+
 ## 里程碑
 
 ### 阶段 0：可信度地基（已完成）

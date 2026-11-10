@@ -28,10 +28,26 @@ function checkVideo(buffer) {
   if (!mp4 && !webm) throw new Error('仅支持 MP4/MOV 或 WebM 文件，不支持网页或播放列表。');
 }
 
+// 子进程执行的是从 GitHub 下载的上游脚本，绝不能让它看到网关里的其他密钥。
+// 因此只透传运行必需的环境变量，外加当前配置实际使用的那一个语音识别密钥。
+const ENV_ALLOWLIST = [
+  'PATH', 'HOME', 'USERPROFILE', 'TMPDIR', 'TEMP', 'TMP', 'SystemRoot', 'WINDIR',
+  'LANG', 'LC_ALL', 'PYTHONHOME', 'PYTHONPATH', 'LOCALAPPDATA', 'APPDATA', 'XDG_CACHE_HOME'
+];
+
+export function buildHelperEnv(payload = {}, source = process.env) {
+  const env = { FATFISH_RESTRICT_MEDIA: '1', PYTHONUTF8: '1' };
+  for (const name of ENV_ALLOWLIST) {
+    if (typeof source[name] === 'string') env[name] = source[name];
+  }
+  const keyEnv = payload?.stt?.mode === 'api' ? payload.stt.keyEnv : undefined;
+  if (keyEnv && typeof source[keyEnv] === 'string') env[keyEnv] = source[keyEnv];
+  return env;
+}
+
 function runHelper(python, payload, timeoutMs) {
   return new Promise((resolve, reject) => {
-    const env = { ...process.env, FATFISH_RESTRICT_MEDIA: '1', PYTHONUTF8: '1' };
-    for (const name of Object.keys(env)) if (name.startsWith('STT_') && name !== payload.stt.keyEnv) delete env[name];
+    const env = buildHelperEnv(payload);
     const child = spawn(python, ['-X', 'utf8', helper], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true, env });
     let output = '', timedOut = false;
     const timer = setTimeout(() => { timedOut = true; child.kill(); }, timeoutMs);
