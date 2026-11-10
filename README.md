@@ -26,7 +26,7 @@
 
 ## 前提
 
-- 已安装 OpenClaw，版本需与插件 SDK 兼容；已用 OpenClaw 2026.6.35 和 Node.js 24.22.1 验证本地插件加载和模拟配置向导。请参考 [OpenClaw 文档](https://docs.openclaw.ai/plugins/building-plugins)。
+- 已安装 OpenClaw，版本需与插件 SDK 兼容；已用 OpenClaw 2026.6.35 和 Node.js 24.22.1 验证本地插件加载和模拟配置向导，并在 2026.11.2 的隔离 profile 下验证过插件加载（未接 QQ）。请参考 [OpenClaw 文档](https://docs.openclaw.ai/plugins/building-plugins)。
 - 需要安装 SnowLuma 并扫码登录；向导会引导安装社区 QQ 通道 [openclaw-snowluma](https://github.com/t871631092/openclaw-snowluma)。本插件本身不连接 QQ。
 - MiMo TTS 需要网络和 API 密钥；Edge TTS 需要 Python 和网络。参见[云模型教程](docs/cloud-providers.md)和 [Edge 语音教程](docs/tts.md)。
 - 目前 OpenClaw 的通道、音频发送和安装兼容性尚未在真实环境验证。音频能否作为 QQ 语音发送取决于通道实现和媒体策略。
@@ -59,6 +59,6 @@ openclaw plugins inspect fatfish --runtime --json
 
 ## 路线与参与
 
-请看 [架构与路线](docs/architecture.md)。运行 `npm test` 执行不依赖 QQ 或外部服务的测试。欢迎通过 GitHub 提交 Issue 或 Pull Request；不要提交真实 QQ 记录、访问令牌或服务商密钥。
+请看 [架构与路线](docs/architecture.md) 和 [路线与验证记录](docs/ROADMAP.md)。运行 `npm test` 执行不依赖 QQ 或外部服务的测试。欢迎通过 GitHub 提交 Issue 或 Pull Request；不要提交真实 QQ 记录、访问令牌或服务商密钥。
 
 本项目与 OpenClaw、SnowLuma、MaiBot、Microsoft 均无官方隶属关系。
