@@ -2,11 +2,13 @@ import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { shouldBlock } from './blacklist.js';
+import { DEFAULT_CHANNELS, channelLabel, isBlacklistId, isValidSenderId } from './identity.js';
 
 const capabilities = ['image', 'video', 'watch', 'sticker', 'tts', 'parse'];
 const helpText = [
   '🐟 大肥鱼指令列表',
   '/fish 或 /fish help — 查看指令列表',
+  '/fish whoami — 查看当前通道、用户标识和会话',
   '/fish image 提示词 — 生成图片',
   '/fish video 提示词 — 生成视频',
   '/fish sticker 关键词 — 发送匹配的表情包',
@@ -19,21 +21,23 @@ const helpText = [
   '/fish persona set 人格描述 — 设置人格',
   '/fish persona on|off|reset — 启用、关闭或恢复人格',
   '/fish blacklist list — 查看黑名单',
-  '/fish blacklist add|remove user|group 号码 — 管理黑名单',
+  '/fish blacklist add|remove user|group 标识 — 管理黑名单',
   '',
   '看视频和语音可通过自然语言请求；功能需先配置、启用并授权。竖线表示选一项。',
+  '官方机器人拿不到 QQ 号，管理员标识用 /fish whoami 查到的 openid。',
   '服务器终端命令：openclaw fatfish --help'
 ].join('\n');
 
-export function isAdmin(identity, admins) {
-  return identity?.channel === 'snowluma' && typeof identity.senderId === 'string' &&
-    /^[0-9]{5,15}$/.test(identity.senderId) && Array.isArray(admins) && admins.includes(identity.senderId);
+// 通道只决定身份是否可信；具体能用哪项功能仍由 admins 和 /fish allow 决定。
+export function isAdmin(identity, admins, trusted = DEFAULT_CHANNELS) {
+  if (!isValidSenderId(identity?.channel, identity?.senderId, trusted)) return false;
+  return Array.isArray(admins) && admins.includes(identity.senderId);
 }
 
-export function canUse(identity, admins, policy, capability) {
+export function canUse(identity, admins, policy, capability, trusted = DEFAULT_CHANNELS) {
   if (!capabilities.includes(capability)) return false;
-  if (identity?.channel !== 'snowluma' || typeof identity.senderId !== 'string' || !/^[0-9]{5,15}$/.test(identity.senderId)) return false;
-  return isAdmin(identity, admins) || policy?.[capability] === true;
+  if (!isValidSenderId(identity?.channel, identity?.senderId, trusted)) return false;
+  return isAdmin(identity, admins, trusted) || policy?.[capability] === true;
 }
 
 export function createPolicyStore(stateDir) {
@@ -72,7 +76,10 @@ export function createPolicyStore(stateDir) {
   return { read, set };
 }
 
-export function makeAdminCommand({ admins, store, generate, personaStore, blacklistStore, stickerStore, stickerCooldown, stickerConfig, parseState }) {
+export function makeAdminCommand({ admins, store, generate, personaStore, blacklistStore, stickerStore, stickerCooldown, stickerConfig, parseState, trustedChannels = DEFAULT_CHANNELS }) {
+  const trusted = trustedChannels;
+  // 各调用点给的字段名不统一，这里统一判断身份是否可用。
+  const verified = identity => isValidSenderId(identity?.channel, identity?.senderId, trusted);
   return {
     name: 'fish',
     description: '大肥鱼指令列表与功能管理',
@@ -82,9 +89,9 @@ export function makeAdminCommand({ admins, store, generate, personaStore, blackl
       const identity = { channel: ctx.channel, senderId: ctx.senderId };
       // 不同调用点给的会话字段不统一，这里同时兼容 conversationId 和 from。
       const conversationId = ctx.conversationId ?? ctx.from;
-      if (blacklistStore && ctx.channel === 'snowluma') {
+      if (blacklistStore && verified(identity)) {
         try {
-          if (shouldBlock(await blacklistStore.read(), { ...identity, conversationId })) {
+          if (shouldBlock(await blacklistStore.read(), { ...identity, conversationId }, trusted)) {
             return { text: '已忽略：当前来源在黑名单中，或身份不可验证。' };
           }
         } catch {
@@ -92,47 +99,62 @@ export function makeAdminCommand({ admins, store, generate, personaStore, blackl
         }
       }
       const commandArgs = (ctx.args ?? '').trim();
+      // 官方机器人拿不到 QQ 号，管理员需要靠这条指令查自己的 openid。
+      // 放在其它校验之前，避免身份格式与通道不匹配时反而看不到排查线索。
+      if (commandArgs === 'whoami') {
+        const admin = isAdmin(identity, admins, trusted);
+        return {
+          text: [
+            `通道：${channelLabel(identity.channel)}（${identity.channel ?? '未知'}）`,
+            `用户标识：${identity.senderId ?? '未知'}`,
+            `会话：${conversationId ?? '未知'}`,
+            `管理员：${admin ? '是' : '否'}`,
+            `身份可用：${verified(identity) ? '是' : '否；当前通道不在可信列表内，或标识格式不正确'}`
+          ].join('\n')
+        };
+      }
       if (commandArgs === '' || commandArgs === 'help') {
-        if (ctx.isAuthorizedSender !== true || identity.channel !== 'snowluma' || typeof identity.senderId !== 'string' || !/^[0-9]{5,15}$/.test(identity.senderId)) return { text: '当前 QQ 用户未通过通道授权，或身份不可验证。' };
+        if (ctx.isAuthorizedSender !== true || !verified(identity)) return { text: '当前 QQ 用户未通过通道授权，或身份不可验证。' };
         return { text: helpText };
       }
       const stickerMatch = /^sticker\s+([\s\S]+)$/.exec((ctx.args ?? '').trim());
       if (stickerMatch) {
-        if (ctx.isAuthorizedSender !== true || !canUse(identity, admins, await store.read(), 'sticker')) return { text: '当前 QQ 用户没有使用表情包的权限，或身份不可验证。' };
+        if (ctx.isAuthorizedSender !== true || !canUse(identity, admins, await store.read(), 'sticker', trusted)) return { text: '当前 QQ 用户没有使用表情包的权限，或身份不可验证。' };
         if (stickerConfig?.enabled !== true || !stickerStore) return { text: '表情包功能未启用。' };
         const [candidate] = await stickerStore.search(stickerMatch[1], 1);
         if (!candidate) return { text: '没有找到匹配的表情包。' };
         const item = await stickerStore.get(candidate.id);
         if (!item) return { text: '表情包文件不可用。' };
-        if (!canUse(identity, admins, await store.read(), 'sticker')) return { text: '表情包权限已变更。' };
+        if (!canUse(identity, admins, await store.read(), 'sticker', trusted)) return { text: '表情包权限已变更。' };
         if (!stickerCooldown(conversationId ?? ctx.sessionKey)) return { text: '表情包发送太频繁，请稍后再试。' };
         return { mediaUrl: item.filePath };
       }
       const match = /^(image|video)\s+([\s\S]+)$/.exec((ctx.args ?? '').trim());
       if (match) {
-        if (ctx.isAuthorizedSender !== true || !canUse(identity, admins, await store.read(), match[1])) return { text: '当前 QQ 用户没有使用此功能的权限，或身份不可验证。' };
+        if (ctx.isAuthorizedSender !== true || !canUse(identity, admins, await store.read(), match[1], trusted)) return { text: '当前 QQ 用户没有使用此功能的权限，或身份不可验证。' };
         if (!generate) return { text: '此功能尚未配置。' };
         const result = await generate(match[1], match[2]);
-        if (!canUse(identity, admins, await store.read(), match[1])) return { text: '生成期间权限发生变化，无法发送结果。' };
+        if (!canUse(identity, admins, await store.read(), match[1], trusted)) return { text: '生成期间权限发生变化，无法发送结果。' };
         return { text: '生成完成。', mediaUrl: result.filePath };
       }
-      if (ctx.isAuthorizedSender !== true || !isAdmin(identity, admins)) return { text: '仅限已配置并通过通道授权的 QQ 管理员使用。' };
+      if (ctx.isAuthorizedSender !== true || !isAdmin(identity, admins, trusted)) return { text: '仅限已配置并通过通道授权的 QQ 管理员使用。' };
       const blacklistMatch = /^blacklist(?:\s+([\s\S]+))?$/.exec((ctx.args ?? '').trim());
       if (blacklistMatch) {
         if (!blacklistStore) return { text: '黑名单功能不可用。' };
         const action = (blacklistMatch[1] ?? 'list').trim();
         if (action === 'list') {
           const policy = await blacklistStore.read();
-          const summary = `黑名单：QQ 用户 ${policy.users.length} 个，QQ群 ${policy.groups.length} 个。`;
-          const ownPrivate = ctx.from === `snowluma:private:${ctx.senderId}` || ctx.from === `private:${ctx.senderId}`;
+          const summary = `黑名单：用户 ${policy.users.length} 个，群 ${policy.groups.length} 个。`;
+          const ownPrivate = conversationId === `private:${ctx.senderId}` || conversationId === `${ctx.channel}:private:${ctx.senderId}`;
           if (!ownPrivate) return { text: `${summary} 在管理员私聊中查看号码。` };
           const format = items => items.slice(0, 20).join('、') || '无';
           return { text: `${summary}\n用户：${format(policy.users)}${policy.users.length > 20 ? ' 等' : ''}\n群：${format(policy.groups)}${policy.groups.length > 20 ? ' 等' : ''}\n每类最多显示前 20 个。` };
         }
-        const match = /^(add|remove)\s+(user|group)\s+([0-9]{5,15})$/.exec(action);
-        if (!match) return { text: '用法：/fish blacklist add|remove user|group 号码' };
+        const match = /^(add|remove)\s+(user|group)\s+(\S+)$/.exec(action);
+        // 官方机器人用 openid 做标识，所以这里同时接受 QQ 号和 openid。
+        if (!match || !isBlacklistId(match[3])) return { text: '用法：/fish blacklist add|remove user|group 标识（QQ 号或 openid）' };
         await blacklistStore.change(match[1], match[2], match[3]);
-        return { text: `已${match[1] === 'add' ? '加入' : '移出'}${match[2] === 'user' ? 'QQ 用户' : 'QQ群'}黑名单。` };
+        return { text: `已${match[1] === 'add' ? '加入' : '移出'}${match[2] === 'user' ? '用户' : '群'}黑名单。` };
       }
       const personaMatch = /^persona(?:\s+([\s\S]+))?$/.exec((ctx.args ?? '').trim());
       if (personaMatch) {
@@ -170,7 +192,7 @@ export function makeAdminCommand({ admins, store, generate, personaStore, blackl
         return { text: `普通用户权限：生图 ${policy.image ? '允许' : '禁止'}；生视频 ${policy.video ? '允许' : '禁止'}；看视频 ${policy.watch ? '允许' : '禁止'}；表情包 ${policy.sticker ? '允许' : '禁止'}；语音合成 ${policy.tts ? '允许' : '禁止'}；媒体解析 ${policy.parse ? '允许' : '禁止'}。功能仍须由管理员配置并启用。用法：/fish allow image|video|watch|sticker|tts|parse on|off` };
       }
       if (args.length !== 3 || args[0] !== 'allow' || !capabilities.includes(args[1]) || !['on', 'off'].includes(args[2])) {
-        return { text: '用法：/fish permissions 或 /fish allow image|video|watch|sticker on|off' };
+        return { text: '用法：/fish permissions 或 /fish allow image|video|watch|sticker|tts|parse on|off' };
       }
       await store.set(args[1], args[2] === 'on');
       return { text: `已${args[2] === 'on' ? '允许' : '禁止'}普通用户使用${{ image: '生图', video: '生视频', watch: '看视频', sticker: '表情包', tts: '语音合成', parse: '媒体解析' }[args[1]]}；功能仍须由管理员配置并启用。` };

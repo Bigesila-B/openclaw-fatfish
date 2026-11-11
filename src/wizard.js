@@ -5,11 +5,16 @@ import { Writable } from 'node:stream';
 
 const snowlumaPackage = 'npm:openclaw-snowluma@0.9.0';
 const digits = /^[0-9]{5,15}$/;
+// 官方 QQ 机器人的用户标识是 openid，不是 QQ 号。
+const openId = /^[0-9A-Za-z][0-9A-Za-z_-]{5,63}$/;
 const guides = 'https://github.com/Bigesila-B/openclaw-fatfish/tree/main/docs';
 
-export function parseIds(raw, required = false) {
+export function parseIds(raw, required = false, kind = 'qq') {
+  const pattern = kind === 'openid' ? openId : digits;
   const ids = raw.trim() ? raw.trim().split(/[\s,，]+/) : [];
-  if ((required && !ids.length) || ids.some(id => !digits.test(id))) throw new Error('请输入 5 至 15 位数字组成的 QQ 号，多个号码用逗号分隔。');
+  if ((required && !ids.length) || ids.some(id => !pattern.test(id))) {
+    throw new Error(kind === 'openid' ? '请输入平台下发的 openid，多个用逗号分隔。' : '请输入 5 至 15 位数字组成的 QQ 号，多个号码用逗号分隔。');
+  }
   return [...new Set(ids)];
 }
 
@@ -20,22 +25,42 @@ export function parseWsUrl(raw) {
   return url.toString();
 }
 
-export function buildPatch({ wsUrl, token, admins, groups, persona }) {
-  const channel = { enabled: true, wsUrl, accessToken: token };
-  // 只有显式填写群号时才收窄来源；留空表示不做通道级限制，
-  // 任何人都能私聊或在群里触发（真正的功能权限仍由 fatfish 的 admins 和 /fish allow 控制）。
-  if (groups.length) channel.allowFrom = [...admins.map(id => `private:${id}`), ...groups.map(id => `group:${id}`)];
+// 可选工具默认不会暴露给模型，必须显式追加到 tools.alsoAllow。
+// 用 alsoAllow 而不是 tools.allow：后者是严格白名单，容易连核心工具一起关掉。
+function withPluginEntry({ admins, persona, enableTools }) {
   const entry = { config: { admins } };
   if (persona) {
     entry.config.persona = { enabled: true, prompt: persona };
     entry.hooks = { allowConversationAccess: true, allowPromptModification: true };
   }
-  return { channels: { snowluma: channel }, plugins: { entries: { fatfish: entry } } };
+  const patch = { plugins: { entries: { fatfish: entry } } };
+  if (enableTools) patch.tools = { alsoAllow: ['fatfish'] };
+  return patch;
 }
 
-export async function runWizard(ui, cli, probe = probeTcp) {
+export function buildPatch({ wsUrl, token, admins, groups, persona, enableTools = false }) {
+  const channel = { enabled: true, wsUrl, accessToken: token };
+  // 只有显式填写群号时才收窄来源；留空表示不做通道级限制，
+  // 任何人都能私聊或在群里触发（真正的功能权限仍由 fatfish 的 admins 和 /fish allow 控制）。
+  if (groups.length) channel.allowFrom = [...admins.map(id => `private:${id}`), ...groups.map(id => `group:${id}`)];
+  return { channels: { snowluma: channel }, ...withPluginEntry({ admins, persona, enableTools }) };
+}
+
+export function buildQQBotPatch({ appId, clientSecret, admins, persona, enableTools = false }) {
+  // allowFrom 留空表示不限制来源：官方机器人默认只有创建者能私聊。
+  return { channels: { qqbot: { enabled: true, appId, clientSecret } }, ...withPluginEntry({ admins, persona, enableTools }) };
+}
+
+export async function runWizard(ui, cli, probe = probeTcp, options = {}) {
+  const channel = options.channel ?? 'snowluma';
+  if (channel === 'qqbot') return runQQBotWizard(ui, cli, options);
+  if (channel !== 'snowluma') throw new Error('不支持的接入方式。');
+  return runSnowlumaWizard(ui, cli, probe, options);
+}
+
+async function runSnowlumaWizard(ui, cli, probe, { enableTools = false }) {
   ui.print('\n🐟 大肥鱼 QQ 配置向导（实验版）');
-  ui.print('本向导需要已安装的 OpenClaw 和可扫码登录的 SnowLuma。配置前可随时按 Ctrl+C 退出。');
+  ui.print('接入方式：SnowLuma OneBot。本向导需要已安装的 OpenClaw 和可扫码登录的 SnowLuma。配置前可随时按 Ctrl+C 退出。');
   ui.print('已验证的 OpenClaw 版本：2026.6.35；其他版本的兼容性需要自行验证。');
 
   if (await ui.confirm('\n第 1 步：现在使用 OpenClaw 官方向导配置聊天模型？', true)) {
@@ -105,12 +130,13 @@ export async function runWizard(ui, cli, probe = probeTcp) {
     if (code !== 0) ui.print('看视频引擎安装未完成；QQ 配置可继续，稍后可运行 openclaw fatfish install-video-skill 重试。');
   }
 
-  const patch = buildPatch({ wsUrl, token, admins, groups, persona });
+  const patch = buildPatch({ wsUrl, token, admins, groups, persona, enableTools });
   ui.print('\n第 6 步：准备写入配置：');
   ui.print(`- QQ 通道地址：${wsUrl}`);
   ui.print(`- 管理员：${admins.join('、')}`);
   ui.print(`- 来源限制：${groups.length ? `仅管理员私聊与群 ${groups.join('、')}` : '不限制（任何人都能私聊，群里 @ 可触发）'}`);
   ui.print('- 写入 SnowLuma 令牌；替换 QQ 通道的 allowFrom（仅在填写群号时）和大肥鱼管理员列表。');
+  ui.print(`- 给模型注册大肥鱼工具（tools.alsoAllow）：${enableTools ? '是' : '否；不开的话 AI 无法主动调用生图、解析等能力'}`);
   ui.print(`- 人格：${persona ? '启用并允许聊天提示钩子' : '不改动现有人格配置'}`);
   if (persona) ui.print('- 如果之前在 QQ 中设置过人格，该设置仍优先；可用 /fish persona reset 恢复配置文件中的人格。');
   ui.print('- 其他通道、模型与功能配置保留。已有同名 QQ 通道字段会被本次输入覆盖。');
@@ -137,6 +163,91 @@ export async function runWizard(ui, cli, probe = probeTcp) {
     const code = await cli.interactive(['gateway', 'run']);
     if (code !== 0) throw new Error('Gateway 未能正常运行；请检查终端中的启动日志。');
   } else ui.print('请按自己的部署方式启动或重启 Gateway，前台启动命令：openclaw gateway run');
+  return { completed: true };
+}
+
+// 官方 QQ 机器人：不需要 SnowLuma，也不需要扫码登录本机进程，
+// 但需要去开放平台创建机器人并拿到 AppID / AppSecret。
+async function runQQBotWizard(ui, cli, { enableTools = false }) {
+  ui.print('\n🐟 大肥鱼 QQ 官方机器人配置向导（实验版）');
+  ui.print('接入方式：QQ 开放平台官方机器人（OpenClaw 内建 qqbot 通道）。配置前可随时按 Ctrl+C 退出。');
+
+  if (await ui.confirm('\n第 1 步：现在使用 OpenClaw 官方向导配置聊天模型？', true)) {
+    const result = await cli.interactive(['configure', '--section', 'model']);
+    if (result !== 0) throw new Error('模型向导未成功完成，请先解决后重新运行。');
+  } else ui.print('已跳过模型配置。请确保已配置可用模型；本向导不会验证模型回复。');
+
+  ui.print('\n第 2 步：在 QQ 开放平台创建机器人。');
+  ui.print('打开 https://q.qq.com/qqbot/openclaw/login.html ，用手机 QQ 扫码登录后点“创建机器人”。');
+  ui.print('AppSecret 不会明文保存，离开页面就只能重新生成，请先复制保存。');
+  if (!await ui.confirm('已经拿到 AppID 和 AppSecret？', false)) {
+    ui.print('请先完成创建并保存凭据后重新运行本向导。当前未修改 QQ 配置。');
+    return { completed: false, reason: 'qqbot-not-ready' };
+  }
+
+  const appId = await ui.askValid('AppID（纯数字）', '', value => {
+    const text = value.trim();
+    if (!/^[0-9]{5,20}$/.test(text)) throw new Error('AppID 应该是纯数字，请检查是否复制完整。');
+    return text;
+  });
+  const clientSecret = await ui.secret('AppSecret（不会显示）: ');
+  if (!clientSecret) return { completed: false, reason: 'missing-secret' };
+  if (clientSecret.length > 512 || /[\r\n\u0000]/.test(clientSecret)) throw new Error('AppSecret 格式无效。');
+
+  // 官方机器人只能拿到 openid，拿不到 QQ 号，所以管理员这一项允许留空。
+  ui.print('\n第 3 步：管理员标识。官方机器人不下发 QQ 号，管理员用 openid 识别。');
+  ui.print('如果还没拿到 openid，可以先留空；配置完成并重启后，私聊机器人发送 /fish whoami 查询。');
+  const admins = await ui.askValid('管理员 openid，多个用逗号分隔（可留空）', '', value => parseIds(value, false, 'openid'));
+
+  ui.print('\n第 4 步：检查 qqbot 通道。');
+  const listed = await cli.capture(['plugins', 'list', '--json']);
+  if (listed.code === 0) {
+    try {
+      const names = JSON.parse(listed.stdout).plugins.map(item => item.id);
+      if (names.includes('qqbot') || names.includes('openclaw-qqbot')) ui.print('已检测到 qqbot 通道插件。');
+      else ui.print('未检测到独立的 qqbot 插件；较新的 OpenClaw 已内建 qqbot 通道，可直接继续。');
+    } catch { ui.print('无法解析插件列表，跳过通道检查。'); }
+  } else ui.print('无法读取插件列表，跳过通道检查。');
+
+  let persona = '';
+  ui.print('\n第 5 步：可选的人格和功能。');
+  if (await ui.confirm('现在配置机器人说话风格？', false)) {
+    ui.print('启用人格需要允许本插件使用聊天提示钩子；请先确认信任该插件。');
+    persona = await ui.askValid('人格描述（最多 1500 字符）', '', value => {
+      const text = value.trim();
+      if (!text || text.length > 1500) throw new Error('人格描述不能为空且最多 1500 个字符。');
+      return text;
+    });
+  }
+  ui.print(`其余功能按教程配置：${guides}`);
+  if (!enableTools) ui.print('注意：未给模型注册大肥鱼工具，AI 将无法主动调用生图、生视频、解析等能力，只能用 /fish 指令。');
+
+  const patch = buildQQBotPatch({ appId, clientSecret, admins, persona, enableTools });
+  ui.print('\n第 6 步：准备写入配置：');
+  ui.print(`- 官方机器人 AppID：${appId}`);
+  ui.print(`- 管理员：${admins.length ? admins.join('、') : '未设置（稍后用 /fish whoami 查询后补上）'}`);
+  ui.print(`- 给模型注册大肥鱼工具（tools.alsoAllow）：${enableTools ? '是' : '否'}`);
+  ui.print(`- 人格：${persona ? '启用并允许聊天提示钩子' : '不改动现有人格配置'}`);
+  ui.print('- 其他通道、模型与功能配置保留。已有同名 channel 字段会被本次输入覆盖。');
+  if (!await ui.confirm('应用这些设置？', true)) return { completed: false, reason: 'cancelled' };
+
+  const serialized = JSON.stringify(patch);
+  const preview = await cli.input(['config', 'patch', '--stdin', '--dry-run'], serialized, clientSecret);
+  if (preview.code !== 0) throw new Error('配置检查失败，未写入 QQ 设置；请检查 OpenClaw 配置后重试。');
+  const applied = await cli.input(['config', 'patch', '--stdin'], serialized, clientSecret);
+  if (applied.code !== 0) throw new Error('写入配置失败；请检查 OpenClaw 配置和 Gateway 状态后重试。');
+  ui.print('配置已写入。');
+  const validation = await cli.capture(['config', 'validate']);
+  if (validation.code !== 0) throw new Error('配置已写入，但验证失败；请运行 openclaw config validate 检查。');
+
+  ui.print('\n第 7 步：重启 OpenClaw Gateway，然后私聊机器人发送 /fish whoami。');
+  ui.print('配置已写入；本向导没有验证 Gateway、QQ 在线状态或机器人是否成功回复。');
+  if (await ui.confirm('如果 Gateway 尚未运行，是否现在前台启动？', false)) {
+    ui.print('Gateway 运行期间请保持终端打开；按 Ctrl+C 结束前台服务。');
+    const code = await cli.interactive(['gateway', 'run']);
+    if (code !== 0) throw new Error('Gateway 未能正常运行；请检查终端中的启动日志。');
+  } else ui.print('请按自己的部署方式启动或重启 Gateway，前台启动命令：openclaw gateway run');
+  if (!admins.length) ui.print('拿到 openid 后，把它写进 plugins.entries.fatfish.config.admins，否则 /fish 的管理指令不可用。');
   return { completed: true };
 }
 
@@ -226,6 +337,21 @@ function createCli(ui) {
 export async function startWizard() {
   if (!process.stdin.isTTY || !process.stdout.isTTY) throw new Error('配置向导需要交互式终端。');
   const ui = createUi();
-  try { return await runWizard(ui, createCli(ui)); }
+  try {
+    ui.print('\n🐟 大肥鱼 QQ 配置向导');
+    ui.print('1 = QQ 开放平台官方机器人（推荐：不用扫码挂 SnowLuma，OpenClaw 内建 qqbot 通道）');
+    ui.print('2 = SnowLuma OneBot（第三方通道，需要本机跑 SnowLuma 并扫码登录）');
+    const channel = await ui.askValid('选择接入方式', '1', parseChannelChoice);
+    // 可选工具默认不会暴露给模型；这里默认开启，否则 AI 用不了生图、解析等能力。
+    const enableTools = await ui.confirm('是否把大肥鱼的功能注册给模型（写入 tools.alsoAllow）？', true);
+    return await runWizard(ui, createCli(ui), probeTcp, { channel, enableTools });
+  }
   finally { ui.close(); }
+}
+
+export function parseChannelChoice(raw) {
+  const value = (raw ?? '').trim().toLowerCase();
+  if (value === '1' || value === 'qqbot' || value === '官方') return 'qqbot';
+  if (value === '2' || value === 'snowluma' || value === 'onebot') return 'snowluma';
+  throw new Error('请输入 1（官方机器人）或 2（SnowLuma）。');
 }

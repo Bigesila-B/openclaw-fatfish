@@ -1,14 +1,14 @@
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { DEFAULT_CHANNELS, isBlacklistId, isTrustedChannel, isValidSenderId, parseConversation } from './identity.js';
 
-const idPattern = /^[0-9]{5,15}$/;
 const maxEntries = 1000;
 
 function validate(value) {
   if (!value || !Array.isArray(value.users) || !Array.isArray(value.groups)) throw new Error('黑名单格式错误。');
   for (const items of [value.users, value.groups]) {
-    if (items.length > maxEntries || items.some(id => typeof id !== 'string' || !idPattern.test(id)) || new Set(items).size !== items.length) throw new Error('黑名单格式错误。');
+    if (items.length > maxEntries || items.some(id => !isBlacklistId(id)) || new Set(items).size !== items.length) throw new Error('黑名单格式错误。');
   }
   return { users: [...value.users], groups: [...value.groups] };
 }
@@ -23,7 +23,7 @@ export function createBlacklistStore(stateDir, initial = {}) {
     catch (error) { if (error.code === 'ENOENT') return validate(fallback); throw error; }
   }
   function change(action, kind, id) {
-    if (!['add', 'remove'].includes(action) || !['user', 'group'].includes(kind) || typeof id !== 'string' || !idPattern.test(id)) return Promise.reject(new Error('无效的黑名单操作。'));
+    if (!['add', 'remove'].includes(action) || !['user', 'group'].includes(kind) || !isBlacklistId(id)) return Promise.reject(new Error('无效的黑名单操作。'));
     const update = pending.then(async () => {
       const policy = await read();
       const key = kind === 'user' ? 'users' : 'groups';
@@ -43,23 +43,28 @@ export function createBlacklistStore(stateDir, initial = {}) {
   return { read, change };
 }
 
-export function shouldBlock(policy, identity) {
-  if (identity?.channel !== 'snowluma') return false;
-  const sender = typeof identity.senderId === 'string' && idPattern.test(identity.senderId) ? identity.senderId : undefined;
-  const conversation = typeof identity.conversationId === 'string' ? identity.conversationId.replace(/^snowluma:/, '') : '';
-  const match = /^(group|private):([0-9]{5,15})$/.exec(conversation);
-  const group = match?.[1] === 'group' ? match[2] : (identity.isGroup === true && idPattern.test(conversation) ? conversation : undefined);
-  // Without a trustworthy ID, fail closed when an active list requires it.
+// 通道不可信时一律不拦（交给通道自身策略），但在可信通道上拿不到可用标识时按关闭处理。
+export function shouldBlock(policy, identity, trusted = DEFAULT_CHANNELS) {
+  const channel = identity?.channel;
+  if (!isTrustedChannel(channel, trusted)) return false;
+  const sender = isValidSenderId(channel, identity?.senderId, trusted) ? identity.senderId : undefined;
+  const parsed = parseConversation(channel, identity?.conversationId);
+  // 个别调用点只给裸群标识，补一条兜底解析。
+  const group = parsed?.kind === 'group'
+    ? parsed.id
+    : (identity?.isGroup === true && isBlacklistId(identity?.conversationId) ? identity.conversationId : undefined);
+  // 有生效名单却完全看不出会话是什么，按关闭处理；能判断是私聊则不算失败。
   if (policy.users.length && !sender) return true;
-  if (policy.groups.length && !match && !group) return true;
+  if (policy.groups.length && !parsed && !group) return true;
   return Boolean((sender && policy.users.includes(sender)) || (group && policy.groups.includes(group)));
 }
 
-export function makeBlacklistHook(store, logger) {
+export function makeBlacklistHook(store, logger, trusted = DEFAULT_CHANNELS) {
   return async (event, ctx) => {
-    if ((ctx?.channelId ?? event?.channel) !== 'snowluma') return;
+    const channel = ctx?.channelId ?? event?.channel;
+    if (!isTrustedChannel(channel, trusted)) return;
     try {
-      if (shouldBlock(await store.read(), { channel: 'snowluma', senderId: ctx?.senderId ?? event?.senderId, conversationId: ctx?.conversationId, isGroup: event?.isGroup })) return { handled: true };
+      if (shouldBlock(await store.read(), { channel, senderId: ctx?.senderId ?? event?.senderId, conversationId: ctx?.conversationId, isGroup: event?.isGroup }, trusted)) return { handled: true };
     } catch {
       logger?.error?.('无法读取大肥鱼黑名单；本次 QQ 消息已阻止。');
       return { handled: true };

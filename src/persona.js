@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { DEFAULT_CHANNELS, isTrustedChannel } from './identity.js';
 
 export const MAX_PERSONA_LENGTH = 1500;
 
@@ -54,10 +55,11 @@ export function createPersonaStore(stateDir, initial = {}) {
   return { read, change };
 }
 
-export function makePersonaHook(store, logger) {
+export function makePersonaHook(store, logger, trusted = DEFAULT_CHANNELS) {
   return async (_event, ctx) => {
     // Only a trusted channel identity from OpenClaw selects the QQ persona.
-    if (ctx?.messageProvider !== 'snowluma' && ctx?.channel !== 'snowluma') return;
+    const channel = ctx?.messageProvider ?? ctx?.channel;
+    if (!isTrustedChannel(channel, trusted)) return;
     try {
       const persona = await store.read();
       if (!persona.enabled) return;

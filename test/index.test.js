@@ -205,6 +205,33 @@ test('生成工具在身份不可验证或跨通道时 fail-closed', { skip: ski
   await assert.rejects(other.descriptor.execute('call-2', { prompt: '一条鱼' }), /没有使用此功能的权限/);
 });
 
+test('官方 QQBot 身份可以直接使用工具，并兼容多种通道字段写法', { skip: skipSdk }, async t => {
+  const openid = 'A1B2C3D4E5F6A7B8';
+  const captured = await setup(t, { stickers: { enabled: true }, admins: [openid] });
+  // 工具工厂上下文里的通道可能叫 messageChannel、nativeChannelId，也可能挂在 deliveryContext 上。
+  const contexts = [
+    { messageChannel: 'qqbot', requesterSenderId: openid, sessionKey: 'q1' },
+    { nativeChannelId: 'qqbot', requesterSenderId: openid, sessionKey: 'q2' },
+    { deliveryContext: { channel: 'qqbot', senderId: openid }, sessionKey: 'q3' }
+  ];
+  for (const ctx of contexts) {
+    const result = await toolMap(captured, ctx).get('fatfish_sticker_search').descriptor.execute('call-1', { query: '开心' });
+    assert.match(result.content[0].text, /没有找到匹配的表情包/, '官方通道身份应通过校验');
+  }
+  // 同一个 openid 换上不受信任的通道后必须拒绝，避免跨通道复用权限。
+  const crossChannel = toolMap(captured, { messageChannel: 'qqbot', requesterSenderId: 'A1B2C3D4E5F6A7B9', sessionKey: 'q4' })
+    .get('fatfish_sticker_search');
+  await assert.rejects(crossChannel.descriptor.execute('call-2', { query: '开心' }), /没有使用表情包的权限/);
+});
+
+test('platform.channels 可以收窄可信通道', { skip: skipSdk }, async t => {
+  const openid = 'A1B2C3D4E5F6A7B8';
+  const captured = await setup(t, { stickers: { enabled: true }, admins: [openid], platform: { channels: ['snowluma'] } });
+  const tool = toolMap(captured, { messageChannel: 'qqbot', requesterSenderId: openid, sessionKey: 'q5' })
+    .get('fatfish_sticker_search');
+  await assert.rejects(tool.descriptor.execute('call-1', { query: '开心' }), /没有使用表情包的权限/);
+});
+
 test('表情工具默认拒绝，授权管理员可以查询空库', { skip: skipSdk }, async t => {
   const captured = await setup(t, { stickers: { enabled: true }, admins: ['10001'] });
 

@@ -12,6 +12,7 @@
 | 2026-11-10 | 同上 | `config validate` 与非法 `admins` 配置 | 合法配置通过；非法 QQ 号被 configSchema 拒绝 |
 | 2026-11-10 | 同上 | `openclaw fatfish install-video-skill` | 从上游仓库安装成功，记录到具体提交 |
 | 2026-11-10 | SnowLuma v2.4.2 + QQ 3.34 + OpenClaw 2026.11.2 | 真实 QQ 私聊发送 `/fish help` | 机器人返回指令列表；SnowLuma 日志可见入站事件与出站引用回复，指令链路打通 |
+| 2026-11-11 | Windows / Node 22.22.2 | `npm test` | 91 个用例：89 通过、2 跳过、0 失败（新增官方 QQBot 通道、openid 身份、`tools.alsoAllow` 相关用例） |
 
 复现方式（始终使用独立状态目录，不要直接改已有 QQ 配置）：
 
@@ -27,13 +28,20 @@ openclaw --dev config validate
 
 ## 仍未验证
 
-以下项目需要真实 SnowLuma + QQ 环境，当前仓库里任何“已支持”的表述都应视为待验证：
+以下项目需要真实 QQ 通道环境，当前仓库里任何“已支持”的表述都应视为待验证：
 
-- 模型回复：本次联调环境没有配置任何聊天模型，只验证了不经过模型的指令路径
+- **官方 QQBot 全链路**：代码已按 `qqbot:c2c:<openid>` / `qqbot:group:<group_openid>` 完成适配并通过单元测试，但没有在真实机器人上跑通消息收发与媒体发送
+- 模型回复：2026-11-10 的联调环境没有配置任何聊天模型，只验证了不经过模型的指令路径
 - `before_dispatch` 钩子在真实消息上的触发行为
 - 群聊消息收发，以及未 @ 机器人时能否观察到群消息
 - 图片、音频、视频发送到 QQ 的成功率与格式兼容性
 - 云端生成、语音服务的真实计费调用（当前测试全部使用桩响应）
+
+## 运行时注意（2026-11-11 补充）
+
+- **可选工具默认对模型不可见。** 插件 7 个工具都是 `optional: true`，OpenClaw 的规则是可选工具永不自动启用。必须写 `tools.alsoAllow: ["fatfish"]`（或具体工具名）并重启 Gateway，否则只有 `/fish` 指令能用，AI 完全不知道有生图、解析这些能力。这是“装了插件却用不了”的最常见原因。
+- **官方 QQBot 拿不到 QQ 号。** 用户标识是 openid，`admins` 里填 QQ 号不会生效。用 `/fish whoami`（或官方 `/bot-me`）查询。
+- **`tools.allow` 与 `tools.alsoAllow` 语义不同。** `allow` 是严格白名单模式，`alsoAllow` 是追加。本插件推荐 `alsoAllow`，避免误伤核心工具。
 
 ## 运行时注意（2026-11-10 联调发现）
 
@@ -48,6 +56,16 @@ openclaw --dev config validate
 - `test/index.test.js` 通过 Node 的模块解析钩子把 `openclaw/plugin-sdk/*` 替换成本地桩，用来执行并断言插件装配逻辑。
 - 因此它验证的是“给定 SDK 行为时的装配是否正确”，不能替代真实运行时验证。真实加载验证见上面的记录表。
 - 其余测试直接测模块本身，不依赖 OpenClaw。
+
+## 0.1.0-alpha.15
+
+- 新增官方 QQ 机器人（OpenClaw 内建 `qqbot` 通道）支持：`src/identity.js` 统一通道 ID、用户标识格式与会话解析
+- 官方机器人的身份标识是 **openid**，`admins` 与黑名单同时接受 QQ 号与 openid；新增 `/fish whoami` 用于查询自己的标识
+- 新增 `platform.channels` 配置（默认 `["snowluma", "qqbot"]`），通道不在列表内一律按身份不可验证处理
+- 配置向导新增接入方式选择（1 = 官方机器人，2 = SnowLuma），并会询问是否写入 `tools.alsoAllow`
+- 修复「装了插件但 AI 用不了功能」：文档与向导明确说明可选工具必须加入 `tools.alsoAllow` 才对模型可见
+- 工具上下文的通道/发送者读取兼容 `nativeChannelId` 与 `deliveryContext`，避免官方通道下全部 fail-closed
+- 新增 `docs/qqbot.md`
 
 ## 0.1.0-alpha.14
 

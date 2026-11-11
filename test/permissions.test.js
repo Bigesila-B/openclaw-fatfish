@@ -85,3 +85,46 @@ test('existing policies migrate with video watching disabled and only admins may
   await command.handler({ ...ctx, senderId: '123456' });
   assert.equal(canUse(ctx, ['123456'], await store.read(), 'watch'), true);
 });
+
+// 官方 QQBot 的用户标识是 openid，不是 QQ 号；下面几项确认两种身份都能正常授权。
+test('官方 QQBot 的 openid 身份可以当管理员', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'fatfish-policy-test-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const openid = 'A1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6';
+  const store = createPolicyStore(root);
+  const command = makeAdminCommand({ admins: [openid], store });
+  const ctx = { channel: 'qqbot', senderId: openid, isAuthorizedSender: true };
+  assert.equal(isAdmin({ channel: 'qqbot', senderId: openid }, [openid]), true);
+  assert.equal(canUse({ channel: 'qqbot', senderId: openid }, [openid], {}, 'parse'), true);
+  assert.match((await command.handler({ ...ctx, args: 'allow parse on' })).text, /已允许/);
+  assert.equal((await store.read()).parse, true);
+});
+
+test('通道不在可信列表时 openid 也视为不可验证', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'fatfish-policy-test-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const openid = 'A1B2C3D4E5F6A7B8';
+  const store = createPolicyStore(root);
+  // 只信任 snowluma 时，qqbot 通道的身份必须被拒绝。
+  const command = makeAdminCommand({ admins: [openid], store, trustedChannels: ['snowluma'] });
+  const reply = await command.handler({ channel: 'qqbot', senderId: openid, isAuthorizedSender: true, args: 'help' });
+  assert.match(reply.text, /未通过通道授权/);
+  assert.equal(isAdmin({ channel: 'qqbot', senderId: openid }, [openid], ['snowluma']), false);
+});
+
+test('/fish whoami 返回通道、标识与会话，且不需要管理员权限', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'fatfish-policy-test-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const openid = 'A1B2C3D4E5F6A7B8';
+  const store = createPolicyStore(root);
+  const command = makeAdminCommand({ admins: [], store });
+  const reply = await command.handler({ channel: 'qqbot', senderId: openid, conversationId: 'c2c:A1B2C3D4E5F6A7B8', isAuthorizedSender: true, args: 'whoami' });
+  assert.match(reply.text, /QQ 官方机器人/);
+  assert.match(reply.text, new RegExp(openid));
+  assert.match(reply.text, /c2c:A1B2C3D4E5F6A7B8/);
+  assert.match(reply.text, /管理员：否/);
+  assert.match(reply.text, /身份可用：是/);
+  // 没有管理员身份也能查，否则新环境永远配不上管理员。
+  const anonymous = await command.handler({ channel: 'qqbot', senderId: openid, isAuthorizedSender: true, args: 'whoami' });
+  assert.match(anonymous.text, /管理员：否/);
+});

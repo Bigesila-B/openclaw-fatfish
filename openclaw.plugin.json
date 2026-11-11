@@ -1,7 +1,7 @@
 {
   "id": "fatfish",
   "name": "大肥鱼 QQ 伙伴",
-  "description": "Free-first optional capabilities for OpenClaw QQ bots (early alpha)",
+  "description": "Free-first optional capabilities for OpenClaw QQ bots (SnowLuma / official QQBot, early alpha)",
   "cliCommands": [
     "fatfish"
   ],
@@ -48,13 +48,32 @@
     "properties": {
       "admins": {
         "type": "array",
-        "description": "可信 SnowLuma 通道管理员 QQ 号；没有默认管理员",
+        "description": "可信管理员标识；SnowLuma 通道填 QQ 号，官方 QQ 机器人填 openid（用 /fish whoami 查询）。没有默认管理员",
         "items": {
           "type": "string",
-          "pattern": "^[0-9]{5,15}$"
+          "pattern": "^[0-9A-Za-z][0-9A-Za-z_-]{4,63}$"
         },
         "uniqueItems": true,
         "default": []
+      },
+      "platform": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "channels": {
+            "type": "array",
+            "description": "允许触发大肥鱼能力的 OpenClaw 通道 ID；默认 snowluma 与 qqbot。不在列表内的通道一律按身份不可验证处理",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9_-]{2,32}$"
+            },
+            "maxItems": 8,
+            "default": [
+              "snowluma",
+              "qqbot"
+            ]
+          }
+        }
       },
       "image": {
         "$ref": "#/$defs/generation"
@@ -70,7 +89,7 @@
             "type": "array",
             "items": {
               "type": "string",
-              "pattern": "^[0-9]{5,15}$"
+              "pattern": "^[0-9A-Za-z][0-9A-Za-z_-]{4,63}$"
             },
             "uniqueItems": true,
             "maxItems": 1000
@@ -79,7 +98,7 @@
             "type": "array",
             "items": {
               "type": "string",
-              "pattern": "^[0-9]{5,15}$"
+              "pattern": "^[0-9A-Za-z][0-9A-Za-z_-]{4,63}$"
             },
             "uniqueItems": true,
             "maxItems": 1000
