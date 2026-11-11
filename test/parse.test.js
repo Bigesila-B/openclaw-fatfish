@@ -1,11 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { dirname, join, relative } from 'node:path';
 import { tmpdir } from 'node:os';
 import { extractUrls, isSupported } from '../src/parse/detect.js';
 import { probe, download, normalizeInfo } from '../src/parse/ytdlp.js';
 import { parseMediaLink } from '../src/parse/index.js';
+import { cleanupCache, leaseCachePaths } from '../src/media-cache.js';
 
 const videoInfo = {
   title: '测试视频', uploader: 'up主', duration: 42, description: '简介',
@@ -162,4 +163,21 @@ test('拒绝清单越界、半成品以及累计超限，失败清理任务目�
   } }), /超过大小上限/);
   assert.deepEqual(await readdir(dir), ['unrelated.mp4']);
   assert.equal(await readFile(outside, 'utf8'), 'private');
+});
+
+test('缓存根目录的路径别名不会被误判为越界，文件仍限定在真实任务目录', async t => {
+  const base = await mkdtemp(join(tmpdir(), 'fatfish-parse-test-'));
+  t.after(() => rm(base, { recursive: true, force: true }));
+  const physical = join(base, 'physical'), alias = join(base, 'alias');
+  await mkdir(physical);
+  await symlink(await realpath(physical), alias, process.platform === 'win32' ? 'junction' : 'dir');
+  const files = await download('https://example.test/alias', { dir: alias, maxBytes: 100, run: args => downloaded(args, 'valid.mp4', 10) });
+  assert.equal(files.length, 1);
+  assert.ok(dirname(files[0].path).startsWith(await realpath(physical)));
+  assert.equal(await readFile(files[0].path).then(value => value.length), 10);
+  const release = leaseCachePaths([join(alias, relative(await realpath(physical), files[0].path))]);
+  try {
+    await cleanupCache(physical, { maxBytes: 0, maxAgeDays: 0 });
+    assert.equal((await stat(files[0].path)).size, 10, '从别名取得的租约也保护真实路径');
+  } finally { release(); }
 });

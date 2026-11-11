@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, writeFile, realpath, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createMediaDelivery } from '../src/media-delivery.js';
@@ -26,9 +26,10 @@ test('媒体发送只使用宿主的当前会话，确认回执后才报告成�
   assert.deepEqual(result.details.messageIds, ['msg-1']);
   assert.equal(sent.to, 'group:222222');
   assert.equal(sent.accountId, 'bot-a');
-  assert.equal(sent.mediaUrl, file);
+  assert.equal(sent.mediaUrl, await realpath(file));
   assert.doesNotMatch(result.text, new RegExp(file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.equal(JSON.stringify(result).includes(file), false);
+  assert.equal(JSON.stringify(result).includes(sent.mediaUrl), false);
 });
 
 test('发送失败不自动重试，重启后可重发已有文件且已发成功的文件不会重复发送', async t => {

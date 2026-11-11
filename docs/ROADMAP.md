@@ -14,7 +14,7 @@
 | 2026-11-10 | SnowLuma v2.4.2 + QQ 3.34 + OpenClaw 2026.11.2 | 真实 QQ 私聊发送 `/fish help` | 机器人返回指令列表；SnowLuma 日志可见入站事件与出站引用回复，指令链路打通 |
 | 2026-11-11 | Windows / Node 22.22.2 | `npm test` | 91 个用例：89 通过、2 跳过、0 失败（新增官方 QQBot 通道、openid 身份、`tools.alsoAllow` 相关用例） |
 | 2026-11-11 | Windows / Node 24.14.0 / OpenClaw 2026.6.35 | alpha.16 隔离安装、运行时检查、配置验证和 `fatfish doctor` | 插件 `loaded`，7 个工具已注册；诊断能启动并报告空配置缺项；未连接真实 QQ |
-| 2026-11-11 | Windows / Node 24.14.0 | alpha.16 `npm test` 与 `npm run check` | 109 个用例：107 通过、2 跳过、0 失败；全部源码语法检查通过 |
+| 2026-11-11 | Windows / Node 24.14.0 | alpha.16 `npm test` 与 `npm run check` | 110 个用例：108 通过、2 跳过、0 失败；全部源码语法检查通过 |
 | 2026-11-11 | GitHub 最新默认分支 | 看视频技能实际安装与解析 | 成功记录 `44be7e702255126432cbfcb018e2e4c112e27a0c`；未执行视频分析或付费模型调用 |
 
 复现方式（始终使用独立状态目录，不要直接改已有 QQ 配置）：

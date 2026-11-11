@@ -1,11 +1,22 @@
 import { mkdir, lstat, readdir, rmdir, unlink } from 'node:fs/promises';
-import { join, resolve, relative, isAbsolute, sep } from 'node:path';
+import { realpathSync } from 'node:fs';
+import { basename, dirname, join, resolve, relative, isAbsolute, sep } from 'node:path';
 
 const DAY_MS = 86400000;
 const leases = new Map();
 
+function canonicalPath(path) {
+  const absolute = resolve(path);
+  try { return realpathSync.native(absolute); }
+  catch {
+    // 清单文件可能尚未创建，仍需规范化已存在的父目录。
+    const parent = dirname(absolute);
+    return parent === absolute ? absolute : join(canonicalPath(parent), basename(absolute));
+  }
+}
+
 export function leaseCachePaths(paths) {
-  const keys = paths.map(path => resolve(path));
+  const keys = paths.map(canonicalPath);
   for (const key of keys) leases.set(key, (leases.get(key) ?? 0) + 1);
   let released = false;
   return () => {
@@ -19,8 +30,9 @@ export function leaseCachePaths(paths) {
 }
 
 function leased(path) {
+  const absolute = canonicalPath(path);
   for (const key of leases.keys()) {
-    const rel = relative(key, resolve(path));
+    const rel = relative(key, absolute);
     if (!rel || (!isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${sep}`))) return true;
   }
   return false;

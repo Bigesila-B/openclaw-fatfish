@@ -92,8 +92,9 @@ export async function probe(url, { bin, timeoutMs = 60000, run = runYtdlp, cooki
 
 export async function download(url, { bin, dir, maxBytes, timeoutMs = 180000, run = runYtdlp, cookiesFile } = {}) {
   if (!Number.isFinite(maxBytes) || maxBytes <= 0) throw new Error('媒体大小上限无效。');
-  const root = resolve(dir);
-  await mkdir(root, { recursive: true, mode: 0o700 });
+  await mkdir(resolve(dir), { recursive: true, mode: 0o700 });
+  // Windows 的 TEMP 可能是 RUNNER~1 形式的短路径，边界校验必须与真实路径一致。
+  const root = await realpath(resolve(dir));
   // Cookie 变化后不复用旧结果；URL 只保存摘要，不把带签名的链接写入缓存清单。
   const cookieVersion = cookiesFile ? await lstat(cookiesFile).then(s => `${cookiesFile}:${s.size}:${s.mtimeMs}`) : '';
   const key = createHash('sha256').update(`${url}\n${cookieVersion}`).digest('hex');
