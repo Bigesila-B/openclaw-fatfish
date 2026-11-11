@@ -5,7 +5,8 @@ export const CAPABILITIES = Object.freeze([
   { id: 'watch', label: '看视频', configKey: 'watchVideo', tools: ['fatfish_watch_video'], guide: 'video-watch.md' },
   { id: 'sticker', label: '表情包', configKey: 'stickers', tools: ['fatfish_sticker_search', 'fatfish_sticker_select'], guide: 'stickers.md' },
   { id: 'tts', label: '语音合成', configKey: 'tts', tools: ['fatfish_tts'], guide: 'tts.md' },
-  { id: 'parse', label: '媒体解析', configKey: 'parse', tools: ['fatfish_parse_link'], guide: 'media-parse.md' }
+  { id: 'parse', label: '媒体解析', configKey: 'parse', tools: ['fatfish_parse_link'], guide: 'media-parse.md' },
+  { id: 'stt', label: '语音识别', configKey: 'stt', tools: ['fatfish_transcribe_audio'], guide: 'attachments.md' }
 ]);
 
 export const capabilityIds = CAPABILITIES.map(item => item.id);

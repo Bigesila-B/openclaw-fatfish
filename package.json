@@ -1,6 +1,6 @@
 {
   "name": "openclaw-fatfish",
-  "version": "0.1.0-alpha.16",
+  "version": "0.1.0-alpha.17",
   "description": "Optional free-first media capabilities for OpenClaw QQ bots",
   "type": "module",
   "license": "MIT",
@@ -14,7 +14,8 @@
     "skills/",
     "scripts/check.mjs",
     "!**/__pycache__/**",
-    "!**/*.pyc"
+    "!**/*.pyc",
+    "assets/"
   ],
   "scripts": {
     "test": "node --test",
@@ -27,5 +28,9 @@
     "extensions": [
       "./src/index.js"
     ]
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "@resvg/resvg-wasm": "^2.6.2"
   }
 }

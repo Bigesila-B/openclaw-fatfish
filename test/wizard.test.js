@@ -47,6 +47,12 @@ test('显式开启时才写入 tools.alsoAllow，且不会变成严格白名单'
   assert.deepEqual(again.tools.alsoAllow, ['other-plugin', 'fatfish']);
 });
 
+test('向导仅写新旧宿主共有的会话权限，避免提示修改字段改名导致配置失效', () => {
+  const patch = buildPatch({ wsUrl: 'ws://localhost:3001/', token: 'token', admins: ['123456'], groups: [], persona: '简短自然' });
+  assert.deepEqual(patch.plugins.entries.fatfish.hooks, { allowConversationAccess: true });
+  assert.equal(patch.plugins.entries.fatfish.config.status.captureUsage, true);
+});
+
 test('官方 QQBot 的配置补丁写入 AppID/AppSecret 且不覆盖来源限制', () => {
   const openid = 'A1B2C3D4E5F6A7B8';
   const patch = buildQQBotPatch({ appId: '102030405', clientSecret: 'secret-value', admins: [openid], persona: '', enableTools: true });

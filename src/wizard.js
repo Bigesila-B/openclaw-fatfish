@@ -28,10 +28,11 @@ export function parseWsUrl(raw) {
 // 可选工具默认不会暴露给模型，必须显式追加到 tools.alsoAllow。
 // 用 alsoAllow 而不是 tools.allow：后者是严格白名单，容易连核心工具一起关掉。
 function withPluginEntry({ admins, persona, enableTools, existingAlsoAllow = [] }) {
-  const entry = { config: { admins } };
+  const entry = { config: { admins, status: { captureUsage: true } }, hooks: { allowConversationAccess: true } };
   if (persona) {
     entry.config.persona = { enabled: true, prompt: persona };
-    entry.hooks = { allowConversationAccess: true, allowPromptModification: true };
+    // 提示修改开关在新旧宿主中名称不同，两者默认允许。
+    // 只写共同的会话权限，保留管理员显式关闭的提示修改策略。
   }
   const patch = { plugins: { entries: { fatfish: entry } } };
   if (enableTools) {
@@ -163,7 +164,8 @@ async function runSnowlumaWizard(ui, cli, probe, { enableTools = false }) {
   ui.print(`- 来源限制：${groups.length ? `仅管理员私聊与群 ${groups.join('、')}` : '不限制（任何人都能私聊，群里 @ 可触发）'}`);
   ui.print(`- 写入 SnowLuma 令牌与管理员列表；${groups.length ? '替换来源名单' : '清除旧的来源名单，恢复不限制来源'}。`);
   ui.print(`- 给模型注册大肥鱼工具（tools.alsoAllow）：${enableTools ? '是' : '否；不开的话 AI 无法主动调用生图、解析等能力'}`);
-  ui.print(`- 人格：${persona ? '启用并允许聊天提示钩子' : '不改动现有人格配置'}`);
+  ui.print(`- 人格：${persona ? '启用；若宿主显式禁止提示修改，需按其版本配置开启' : '不改动现有人格配置'}`);
+  ui.print('- 允许聊天访问钩子用于面板用量统计；插件只保存模型标识和数字，不保存聊天正文。');
   if (persona) ui.print('- 如果之前在 QQ 中设置过人格，该设置仍优先；可用 /fish persona reset 恢复配置文件中的人格。');
   ui.print('- 其他通道、模型与功能配置保留。已有同名 QQ 通道字段会被本次输入覆盖。');
   if (!await ui.confirm('应用这些设置？', true)) return { completed: false, reason: 'cancelled' };
@@ -255,7 +257,8 @@ async function runQQBotWizard(ui, cli, { enableTools = false }) {
   ui.print(`- 官方机器人 AppID：${appId}`);
   ui.print(`- 管理员：${admins.length ? admins.join('、') : '未设置（稍后用 /fish whoami 查询后补上）'}`);
   ui.print(`- 给模型注册大肥鱼工具（tools.alsoAllow）：${enableTools ? '是' : '否'}`);
-  ui.print(`- 人格：${persona ? '启用并允许聊天提示钩子' : '不改动现有人格配置'}`);
+  ui.print(`- 人格：${persona ? '启用；若宿主显式禁止提示修改，需按其版本配置开启' : '不改动现有人格配置'}`);
+  ui.print('- 允许聊天访问钩子用于面板用量统计；插件只保存模型标识和数字，不保存聊天正文。');
   ui.print('- 其他通道、模型与功能配置保留。已有同名 channel 字段会被本次输入覆盖。');
   if (!await ui.confirm('应用这些设置？', true)) return { completed: false, reason: 'cancelled' };
 

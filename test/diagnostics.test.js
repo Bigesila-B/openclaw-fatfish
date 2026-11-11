@@ -20,6 +20,13 @@ test('诊断发现缺少工具开放、人格权限和供应商凭据', async ()
   for (const name of ['管理员', '聊天模型', '语音合成工具', '语音合成凭据', '人格钩子']) assert.equal(report.checks.find(item => item.name === name).status, 'needs-setup');
 });
 
+test('人格提示修改权限兼容新旧宿主，默认允许，显式关闭时诊断提示', async () => {
+  for (const extra of [{}, { allowPromptInjection: false }, { allowPromptModification: false }]) {
+    const report = await diagnose({ pluginConfig: { persona: { enabled: true } }, config: { plugins: { entries: { fatfish: { hooks: { allowConversationAccess: true, ...extra } } } } } });
+    assert.equal(report.checks.find(check => check.name === '人格钩子').status, Object.keys(extra).length ? 'needs-setup' : 'configured');
+  }
+});
+
 test('看视频诊断使用配置的 Python，接受内置 FFmpeg，不把可选 ffprobe 当作必需', async () => {
   const calls = [];
   const report = await diagnose({ pluginConfig: { watchVideo: { enabled: true, python: '/custom/python' } }, commandExists: async (command, args) => { calls.push([command, args]); return command !== 'ffmpeg'; } });

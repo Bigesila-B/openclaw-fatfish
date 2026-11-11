@@ -15,6 +15,23 @@ test('QQ identity and channel are both required', () => {
   assert.equal(canUse({ channel: 'other', senderId: '345678' }, admins, { image: true }, 'image'), false);
 });
 
+test('独立权限按单人、单群、默认继承，账号隔离，inherit 可撤销独立规则', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'fatfish-policy-test-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const store = createPolicyStore(root);
+  const identity = { channel: 'snowluma', senderId: '345678', accountId: 'a', conversationId: 'group:222222' };
+  const scope = { channel: 'snowluma', accountId: 'a' };
+  await store.set('image', true, { ...scope, kind: 'group', id: '222222' });
+  assert.equal(canUse(identity, [], await store.read(), 'image'), true);
+  assert.equal(canUse({ ...identity, accountId: 'b' }, [], await store.read(), 'image'), false);
+  await store.set('image', false, { ...scope, kind: 'user', id: identity.senderId });
+  assert.equal(canUse(identity, [], await store.read(), 'image'), false);
+  assert.equal(canUse(identity, [identity.senderId], await store.read(), 'image'), true);
+  const command = makeAdminCommand({ admins: ['123456'], store });
+  await command.handler({ ...identity, senderId: '123456', isAuthorizedSender: true, args: `allow image inherit user ${identity.senderId}` });
+  assert.equal(canUse(identity, [], await store.read(), 'image'), true);
+});
+
 test('help and the bare command list implemented QQ commands without changing permissions', async t => {
   const root = await mkdtemp(join(tmpdir(), 'fatfish-policy-test-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -26,8 +43,8 @@ test('help and the bare command list implemented QQ commands without changing pe
   assert.equal(bare.text, help.text);
   for (const name of ['image', 'video', 'sticker', 'permissions', 'allow', 'persona', 'blacklist']) assert.match(help.text, new RegExp(`/fish ${name}`));
   assert.match(help.text, /仅管理员/);
-  assert.doesNotMatch(help.text, /\/fish status/);
-  assert.deepEqual(await store.read(), { image: false, video: false, watch: false, sticker: false, tts: false, parse: false });
+  assert.match(help.text, /\/fish status/);
+  assert.deepEqual(await store.read(), { image: false, video: false, watch: false, sticker: false, tts: false, parse: false, stt: false });
   assert.match((await command.handler({ ...ctx, isAuthorizedSender: false, args: 'help' })).text, /未通过/);
   assert.match((await command.handler({ ...ctx, senderId: undefined, args: 'help' })).text, /未通过/);
   assert.match((await command.handler({ ...ctx, channel: 'other', args: 'help' })).text, /未通过/);
@@ -42,11 +59,11 @@ test('only authorized admins can change persistent permissions', async t => {
   const base = { channel: 'snowluma', senderId: '123456', isAuthorizedSender: true };
   assert.match((await command.handler({ ...base, senderId: '111111', args: 'allow image on' })).text, /仅限/);
   assert.match((await command.handler({ ...base, isAuthorizedSender: false, args: 'allow image on' })).text, /仅限/);
-  assert.deepEqual(await store.read(), { image: false, video: false, watch: false, sticker: false, tts: false, parse: false });
+  assert.deepEqual(await store.read(), { image: false, video: false, watch: false, sticker: false, tts: false, parse: false, stt: false });
   await Promise.all([command.handler({ ...base, args: 'allow image on' }), command.handler({ ...base, args: 'allow video on' })]);
-  assert.deepEqual(await createPolicyStore(root).read(), { image: true, video: true, watch: false, sticker: false, tts: false, parse: false });
+  assert.deepEqual(await createPolicyStore(root).read(), { image: true, video: true, watch: false, sticker: false, tts: false, parse: false, stt: false });
   await command.handler({ ...base, args: 'allow image off' });
-  assert.deepEqual(await store.read(), { image: false, video: true, watch: false, sticker: false, tts: false, parse: false });
+  assert.deepEqual(await store.read(), { image: false, video: true, watch: false, sticker: false, tts: false, parse: false, stt: false });
 });
 
 test('malformed persisted policies fail closed', async t => {
@@ -77,7 +94,7 @@ test('existing policies migrate with video watching disabled and only admins may
   await mkdir(join(root, 'fatfish'));
   await writeFile(join(root, 'fatfish', 'permissions.json'), JSON.stringify({ image: true, video: false }));
   const store = createPolicyStore(root);
-  assert.deepEqual(await store.read(), { image: true, video: false, watch: false, sticker: false, tts: false, parse: false });
+  assert.deepEqual(await store.read(), { image: true, video: false, watch: false, sticker: false, tts: false, parse: false, stt: false });
   const command = makeAdminCommand({ admins: ['123456'], store });
   const ctx = { channel: 'snowluma', senderId: '111111', isAuthorizedSender: true, args: 'allow watch on' };
   await command.handler(ctx);

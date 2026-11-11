@@ -66,17 +66,22 @@ function runHelper(python, payload, timeoutMs) {
   });
 }
 
-export async function buildVideoContext({ url, question, config = {}, commonStt = {}, skillDir, fetchMedia, run = runHelper }) {
+export async function buildVideoContext({ url, media: stagedMedia, question, config = {}, commonStt = {}, skillDir, fetchMedia, run = runHelper }) {
   if (config.enabled !== true) throw new Error('看视频功能未启用，请查看配置教程。');
   if (typeof question !== 'string' || !question.trim() || question.length > 1000) throw new Error('视频问题须为 1 至 1000 字符。');
-  let parsed; try { parsed = new URL(url); } catch { throw new Error('请提供可直接下载的 HTTPS 视频地址。'); }
-  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.hash || url.length > 4096) throw new Error('仅支持不含账号密码的 HTTPS 视频直链。');
+  let parsed;
+  if (!stagedMedia) {
+    try { parsed = new URL(url); } catch { throw new Error('请提供可直接下载的 HTTPS 视频地址。'); }
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.hash || url.length > 4096) throw new Error('仅支持不含账号密码的 HTTPS 视频直链。');
+  }
   const stt = resolveWatchStt(config, commonStt);
   if (stt.mode === 'api' && !process.env[stt.keyEnv]) throw new Error(`未配置视频语音识别的密钥环境变量 ${stt.keyEnv}。`);
-  if (typeof fetchMedia !== 'function') throw new Error('安全下载组件不可用。');
-  let media;
-  try { media = await fetchMedia({ url: parsed.href, maxBytes: MAX_BYTES, maxRedirects: 0, timeoutMs: 60000 }); }
-  catch { throw new Error('无法安全下载视频，请检查链接、文件大小和网络。'); }
+  let media = stagedMedia;
+  if (!media) {
+    if (typeof fetchMedia !== 'function') throw new Error('安全下载组件不可用。');
+    try { media = await fetchMedia({ url: parsed.href, maxBytes: MAX_BYTES, maxRedirects: 0, timeoutMs: 60000 }); }
+    catch { throw new Error('无法安全下载视频，请检查链接、文件大小和网络。'); }
+  }
   checkVideo(media.buffer);
   const root = await mkdtemp(join(tmpdir(), 'fatfish-watch-'));
   try {

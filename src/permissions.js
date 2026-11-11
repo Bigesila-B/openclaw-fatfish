@@ -2,21 +2,30 @@ import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { shouldBlock } from './blacklist.js';
-import { DEFAULT_CHANNELS, channelLabel, isBlacklistId, isValidSenderId } from './identity.js';
+import { DEFAULT_CHANNELS, channelLabel, isBlacklistId, isValidSenderId, parseConversation } from './identity.js';
 import { capabilityIds as capabilities, CAPABILITIES } from './capabilities.js';
 
 const helpText = [
   '🐟 大肥鱼指令列表',
   '/fish 或 /fish help — 查看指令列表',
   '/fish whoami — 查看当前通道、用户标识和会话',
+  '/fish status [image|text] — 查看状态面板；完整信息仅管理员私聊可见',
+  '/fish tasks — 列出当前会话中自己的生成任务',
+  '/fish task 编号 — 查询生成任务',
+  '/fish task resume|cancel|send 编号 — 恢复查询、取消本地任务或重发结果',
   '/fish image 提示词 — 生成图片',
   '/fish video 提示词 — 生成视频',
   '/fish sticker 关键词 — 发送匹配的表情包',
   '/fish resend 编号 [file] — 在原会话重发已有媒体；file 表示按附件发送',
   '',
   '以下指令仅管理员可操作：',
+  '/fish panel settings — 查看面板设置',
+  '/fish panel on|off|image|text — 开关面板或设置默认格式',
+  '/fish panel theme dark|light — 设置面板主题',
+  '/fish panel public on|off — 开关普通用户功能简报',
   '/fish permissions — 查看普通用户权限',
-  '/fish allow image|video|watch|sticker|tts|parse on|off — 设置权限',
+  '/fish allow image|video|watch|sticker|tts|parse|stt on|off — 设置普通用户权限',
+  '/fish allow 功能 on|off|inherit user|group 标识 — 设置或恢复当前机器人下的单人或单群权限',
   '/fish parse status|on|off — 开关媒体解析',
   '/fish persona status — 查看人格状态',
   '/fish persona set 人格描述 — 设置人格',
@@ -38,7 +47,13 @@ export function isAdmin(identity, admins, trusted = DEFAULT_CHANNELS) {
 export function canUse(identity, admins, policy, capability, trusted = DEFAULT_CHANNELS) {
   if (!capabilities.includes(capability)) return false;
   if (!isValidSenderId(identity?.channel, identity?.senderId, trusted)) return false;
-  return isAdmin(identity, admins, trusted) || policy?.[capability] === true;
+  if (isAdmin(identity, admins, trusted)) return true;
+  const scopeKey = (kind, id) => JSON.stringify([identity.channel, identity.accountId ?? 'default', kind, id]);
+  const user = policy?.overrides?.[scopeKey('user', identity.senderId)]?.[capability];
+  if (typeof user === 'boolean') return user;
+  const parsed = parseConversation(identity.channel, identity.conversationId);
+  const group = parsed?.kind === 'group' ? policy?.overrides?.[scopeKey('group', parsed.id)]?.[capability] : undefined;
+  return typeof group === 'boolean' ? group : policy?.[capability] === true;
 }
 
 export function createPolicyStore(stateDir) {
@@ -49,18 +64,27 @@ export function createPolicyStore(stateDir) {
     let raw;
     try { raw = await readFile(file, 'utf8'); }
     catch (error) {
-      if (error.code === 'ENOENT') return { image: false, video: false, watch: false, sticker: false, tts: false, parse: false };
+      if (error.code === 'ENOENT') return Object.fromEntries(capabilities.map(id => [id, false]));
       throw error;
     }
     const obj = JSON.parse(raw);
-    if (!obj || typeof obj.image !== 'boolean' || typeof obj.video !== 'boolean' || (obj.watch !== undefined && typeof obj.watch !== 'boolean') || (obj.sticker !== undefined && typeof obj.sticker !== 'boolean') || (obj.tts !== undefined && typeof obj.tts !== 'boolean') || (obj.parse !== undefined && typeof obj.parse !== 'boolean')) throw new Error('权限文件格式错误');
-    return { image: obj.image, video: obj.video, watch: obj.watch ?? false, sticker: obj.sticker ?? false, tts: obj.tts ?? false, parse: obj.parse ?? false };
+    if (!obj || typeof obj.image !== 'boolean' || typeof obj.video !== 'boolean' || capabilities.some(id => obj[id] !== undefined && typeof obj[id] !== 'boolean')) throw new Error('权限文件格式错误');
+    if (obj.overrides !== undefined && (!obj.overrides || typeof obj.overrides !== 'object' || Array.isArray(obj.overrides) || Object.keys(obj.overrides).length > 1000 || Object.values(obj.overrides).some(rule => !rule || typeof rule !== 'object' || Object.entries(rule).some(([key, value]) => !capabilities.includes(key) || typeof value !== 'boolean')))) throw new Error('权限文件格式错误');
+    return { ...Object.fromEntries(capabilities.map(id => [id, obj[id] ?? false])), ...(obj.overrides ? { overrides: obj.overrides } : {}) };
   }
-  function set(capability, enabled) {
-    if (!capabilities.includes(capability) || typeof enabled !== 'boolean') return Promise.reject(new Error('无效权限'));
+  function set(capability, enabled, scope) {
+    if (!capabilities.includes(capability) || typeof enabled !== 'boolean' && !(scope && enabled === null)) return Promise.reject(new Error('无效权限'));
     const update = pending.then(async () => {
       const policy = await read();
-      policy[capability] = enabled;
+      if (scope) {
+        if (!['user', 'group'].includes(scope.kind) || !isBlacklistId(scope.id) || !DEFAULT_CHANNELS.includes(scope.channel)) throw new Error('无效权限范围');
+        const key = JSON.stringify([scope.channel, scope.accountId ?? 'default', scope.kind, scope.id]);
+        policy.overrides ??= {};
+        if (enabled === null) {
+          if (policy.overrides[key]) { delete policy.overrides[key][capability]; if (!Object.keys(policy.overrides[key]).length) delete policy.overrides[key]; }
+        } else policy.overrides[key] = { ...(policy.overrides[key] ?? {}), [capability]: enabled };
+        if (Object.keys(policy.overrides).length > 1000) throw new Error('权限规则已达上限。');
+      } else policy[capability] = enabled;
       await mkdir(dirname(file), { recursive: true, mode: 0o700 });
       const temporary = `${file}.${randomUUID()}.tmp`;
       try {
@@ -77,7 +101,7 @@ export function createPolicyStore(stateDir) {
   return { read, set };
 }
 
-export function makeAdminCommand({ admins, store, generate, personaStore, blacklistStore, stickerStore, stickerCooldown, stickerConfig, parseState, mediaDelivery, trustedChannels = DEFAULT_CHANNELS }) {
+export function makeAdminCommand({ admins, store, generate, personaStore, blacklistStore, stickerStore, stickerCooldown, stickerConfig, parseState, mediaDelivery, statusService, taskManager, trustedChannels = DEFAULT_CHANNELS }) {
   const trusted = trustedChannels;
   // 各调用点给的字段名不统一，这里统一判断身份是否可用。
   const verified = identity => isValidSenderId(identity?.channel, identity?.senderId, trusted);
@@ -87,7 +111,7 @@ export function makeAdminCommand({ admins, store, generate, personaStore, blackl
     acceptsArgs: true,
     requireAuth: true,
     async handler(ctx) {
-      const identity = { channel: ctx.channel, senderId: ctx.senderId };
+      const identity = { channel: ctx.channel, senderId: ctx.senderId, accountId: ctx.accountId ?? 'default', conversationId: ctx.conversationId ?? ctx.from };
       // 不同调用点给的会话字段不统一，这里同时兼容 conversationId 和 from。
       const conversationId = ctx.conversationId ?? ctx.from;
       if (blacklistStore && verified(identity)) {
@@ -118,6 +142,19 @@ export function makeAdminCommand({ admins, store, generate, personaStore, blackl
         if (ctx.isAuthorizedSender !== true || !verified(identity)) return { text: '当前 QQ 用户未通过通道授权，或身份不可验证。' };
         return { text: helpText };
       }
+      const status = /^status(?:\s+(image|text))?$/.exec(commandArgs);
+      if (status || /^panel(?:\s|$)/.test(commandArgs)) {
+        if (ctx.isAuthorizedSender !== true || !verified(identity)) return { text: '当前 QQ 用户未通过通道授权，或身份不可验证。' };
+        if (!statusService) return { text: '状态面板组件不可用。' };
+        return status ? statusService.handle(ctx, status[1]) : statusService.configure(ctx, commandArgs.slice(5));
+      }
+      const task = /^task(?:s)?(?:\s+([\s\S]+))?$/.exec(commandArgs);
+      if (task) {
+        if (ctx.isAuthorizedSender !== true || !verified(identity)) return { text: '当前 QQ 用户未通过通道授权，或身份不可验证。' };
+        if (!taskManager) return { text: '任务组件不可用。' };
+        try { return await taskManager.command(ctx, task[1] ?? ''); }
+        catch { return { text: '无法操作任务：请确认编号、当前权限，以及是否在原会话操作自己的任务。' }; }
+      }
       const resend = /^resend\s+(\S+)(?:\s+(file))?$/.exec(commandArgs);
       if (resend) {
         if (ctx.isAuthorizedSender !== true || !verified(identity)) return { text: '当前 QQ 用户未通过通道授权，或身份不可验证。' };
@@ -141,6 +178,7 @@ export function makeAdminCommand({ admins, store, generate, personaStore, blackl
       const match = /^(image|video)\s+([\s\S]+)$/.exec((ctx.args ?? '').trim());
       if (match) {
         if (ctx.isAuthorizedSender !== true || !canUse(identity, admins, await store.read(), match[1], trusted)) return { text: '当前 QQ 用户没有使用此功能的权限，或身份不可验证。' };
+        if (taskManager) return taskManager.submit(ctx, match[1], match[2]);
         if (!generate) return { text: '此功能尚未配置。' };
         if (mediaDelivery) await mediaDelivery.check(ctx, match[1]);
         const result = await generate(match[1], match[2]);
@@ -200,13 +238,14 @@ export function makeAdminCommand({ admins, store, generate, personaStore, blackl
       const args = (ctx.args ?? '').trim().split(/\s+/);
       if (args.length === 1 && args[0] === 'permissions') {
         const policy = await store.read();
-        return { text: `普通用户权限：生图 ${policy.image ? '允许' : '禁止'}；生视频 ${policy.video ? '允许' : '禁止'}；看视频 ${policy.watch ? '允许' : '禁止'}；表情包 ${policy.sticker ? '允许' : '禁止'}；语音合成 ${policy.tts ? '允许' : '禁止'}；媒体解析 ${policy.parse ? '允许' : '禁止'}。功能仍须由管理员配置并启用。用法：/fish allow image|video|watch|sticker|tts|parse on|off` };
+        return { text: `普通用户默认权限：${CAPABILITIES.map(item => `${item.label} ${policy[item.id] ? '允许' : '禁止'}`).join('；')}。\n单人/单群规则 ${Object.keys(policy.overrides ?? {}).length} 条；优先级：黑名单 > 管理员 > 单人 > 单群 > 默认。功能仍须配置并启用。\n用法：/fish allow 功能 on|off；/fish allow 功能 on|off|inherit user|group 标识` };
       }
-      if (args.length !== 3 || args[0] !== 'allow' || !capabilities.includes(args[1]) || !['on', 'off'].includes(args[2])) {
-        return { text: '用法：/fish permissions 或 /fish allow image|video|watch|sticker|tts|parse on|off' };
+      if (![3, 5].includes(args.length) || args[0] !== 'allow' || !capabilities.includes(args[1]) || !['on', 'off', ...(args.length === 5 ? ['inherit'] : [])].includes(args[2]) || args.length === 5 && (!['user', 'group'].includes(args[3]) || !isBlacklistId(args[4]))) {
+        return { text: '用法：/fish permissions 或 /fish allow 功能 on|off；/fish allow 功能 on|off|inherit user|group 标识' };
       }
-      await store.set(args[1], args[2] === 'on');
-      return { text: `已${args[2] === 'on' ? '允许' : '禁止'}普通用户使用${CAPABILITIES.find(item => item.id === args[1]).label}；功能仍须由管理员配置并启用。` };
+      await store.set(args[1], args[2] === 'inherit' ? null : args[2] === 'on', args.length === 5 ? { kind: args[3], id: args[4], channel: ctx.channel, accountId: ctx.accountId } : undefined);
+      if (args[2] === 'inherit') return { text: '已删除此项独立规则，恢复继承权限。' };
+      return { text: `已${args[2] === 'on' ? '允许' : '禁止'}${args.length === 5 ? `${args[3] === 'user' ? '用户' : '群'} ${args[4]}` : '普通用户'}使用${CAPABILITIES.find(item => item.id === args[1]).label}；功能仍须由管理员配置并启用。` };
     }
   };
 }

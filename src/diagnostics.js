@@ -31,9 +31,13 @@ export async function diagnose({ config = {}, pluginConfig = {}, stateDir, env =
   if (pluginConfig.stt?.enabled) add('STT 凭据', env.SILICONFLOW_API_KEY ? 'configured' : 'needs-setup', env.SILICONFLOW_API_KEY ? '已设置，未验证真实转写' : '缺少 SILICONFLOW_API_KEY');
   if (pluginConfig.persona?.enabled) {
     const hooks = config.plugins?.entries?.fatfish?.hooks;
-    add('人格钩子', hooks?.allowConversationAccess === true && hooks?.allowPromptModification === true ? 'configured' : 'needs-setup', '需允许聊天访问与提示修改；实际生效需通过聊天确认');
+    add('人格钩子', hooks?.allowConversationAccess === true && hooks?.allowPromptInjection !== false && hooks?.allowPromptModification !== false ? 'configured' : 'needs-setup', '需允许聊天访问；提示修改开关新旧版本名称不同，不能显式设为 false；实际效果需聊天确认');
+  }
+  if (pluginConfig.status?.enabled !== false && pluginConfig.status?.captureUsage !== false) {
+    add('面板用量钩子', config.plugins?.entries?.fatfish?.hooks?.allowConversationAccess === true ? 'configured' : 'needs-setup', '需允许聊天访问；只记录数字用量和模型元数据，缺少时面板数据可能不可用');
   }
   const dependencies = [];
+  if (pluginConfig.stt?.enabled) dependencies.push(['语音附件 FFmpeg', pluginConfig.attachments?.ffmpegPath || 'ffmpeg', ['-version']]);
   if (pluginConfig.parse?.enabled) dependencies.push(['yt-dlp', pluginConfig.parse.ytdlpPath || 'yt-dlp'], ['ffmpeg', 'ffmpeg', ['-version']]);
   if (pluginConfig.watchVideo?.enabled) {
     const python = pluginConfig.watchVideo.python || 'python';

@@ -107,12 +107,25 @@ export function createMediaDelivery(api, { stateDir, authorize }) {
   }
   return {
     check,
-    async deliver(ctx, capability, sources) {
+    async notice(ctx, capability, text) {
+      const { route, cfg, adapter, to } = await check(ctx, capability);
+      const options = { cfg, to, text, accountId: route.accountId, threadId: route.threadId };
+      const receipt = adapter.sendText ? await adapter.sendText(options) : adapter.sendPayload ? await adapter.sendPayload({ ...options, payload: { text } }) : null;
+      return Boolean(receipt?.messageId);
+    },
+    async deliver(ctx, capability, sources, { onCreated } = {}) {
       const { route } = await check(ctx, capability);
       if (!Array.isArray(sources) || !sources.length || sources.length > 16 || sources.some(source => typeof source !== 'string' || !source)) throw new Error('媒体结果清单无效。');
       const record = { id: randomUUID(), route, capability, createdAt: new Date().toISOString(), items: [...new Set(sources)].map(source => ({ source, status: 'pending' })) };
       await save(record);
+      await onCreated?.(record.id);
       return send(ctx, record);
+    },
+    async inspect(ctx, id) {
+      if (!idPattern.test(id)) throw new Error('媒体编号无效。');
+      const record = JSON.parse(await readFile(join(directory, `${id}.json`), 'utf8'));
+      if (!sameRoute(currentMediaRoute(ctx), record.route)) throw new Error('只能查看原会话中的媒体。');
+      return result(record, '').details;
     },
     async resend(ctx, id, options) {
       if (!idPattern.test(id)) throw new Error('媒体重发编号无效。');

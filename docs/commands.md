@@ -6,12 +6,21 @@
 |---|---|---|
 | `/fish` 或 `/fish help` | 查看本列表 | 已通过通道授权的用户 |
 | `/fish whoami` | 查看当前通道、用户标识和会话 | 已通过通道授权的用户 |
+| `/fish status [image\|text]` | 查看图片面板或文字状态 | 完整信息仅管理员私聊；简报须另行开放 |
+| `/fish tasks` | 查看当前会话中自己的任务 | 已通过通道授权的用户 |
+| `/fish task 编号` | 查询任务状态 | 原用户及原会话 |
+| `/fish task resume\|cancel\|send 编号` | 恢复查询、取消本地任务、重发结果 | 原用户及原会话；恢复/发送需仍有权限 |
 | `/fish image 提示词` | 生成图片 | 管理员或已获授权的用户 |
 | `/fish video 提示词` | 生成视频 | 管理员或已获授权的用户 |
 | `/fish sticker 关键词` | 查找并发送表情包 | 管理员或已获授权的用户 |
 | `/fish resend 编号 [file]` | 重发已有媒体；file 表示按附件发送 | 原请求用户、原会话，且仍具备对应功能权限 |
 | `/fish permissions` | 查看普通用户权限 | 管理员 |
-| `/fish allow image\|video\|watch\|sticker\|tts\|parse on\|off` | 设置功能权限 | 管理员 |
+| `/fish panel settings` | 查看面板设置 | 管理员私聊 |
+| `/fish panel on\|off\|image\|text` | 开关面板、设置默认格式 | 管理员私聊 |
+| `/fish panel theme dark\|light` | 设置主题 | 管理员私聊 |
+| `/fish panel public on\|off` | 开关普通用户功能简报 | 管理员私聊 |
+| `/fish allow image\|video\|watch\|sticker\|tts\|parse\|stt on\|off` | 设置默认功能权限 | 管理员 |
+| `/fish allow 功能 on\|off\|inherit user\|group 标识` | 设置独立规则或恢复继承 | 管理员；限当前通道与机器人账号 |
 | `/fish parse status\|on\|off` | 开关媒体解析 | 管理员 |
 | `/fish persona status` | 查看人格状态 | 管理员 |
 | `/fish persona set 人格描述` | 设置人格 | 管理员 |
@@ -19,7 +28,7 @@
 | `/fish blacklist list` | 查看黑名单；标识仅在管理员私聊显示 | 管理员 |
 | `/fish blacklist add\|remove user\|group 标识` | 添加或移除黑名单用户/群 | 管理员 |
 
-竖线表示从中选择一项，例如 `/fish allow image on`。看视频和语音使用自然语言请求；看视频需要视频文件直链。`/fish status` 状态面板尚未实现，不包含在指令列表中。
+竖线表示从中选择一项，例如 `/fish allow image on`。看视频和语音使用自然语言请求；附件要求宿主提供标准媒体事实，也可使用视频 HTTPS 文件直链。详见[状态面板](status-panel.md)、[任务队列](tasks.md)和[附件处理](attachments.md)。
 
 `/fish whoami` 是配置管理员的关键入口：SnowLuma 通道下返回 QQ 号，官方 QQBot 通道下返回 openid（官方机器人不下发 QQ 号）。把返回值填进 `plugins.entries.fatfish.config.admins` 才能使用管理指令。
 

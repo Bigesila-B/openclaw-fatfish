@@ -8,7 +8,7 @@
 
 ## ⚠️ 装完却“用不了功能”？先看这里
 
-本插件的 7 个工具都以 **可选工具**（`optional: true`）注册。OpenClaw 的规则是：**可选工具永远不会自动启用，必须显式加入工具允许列表，模型才看得见它们。**
+本插件的 9 个工具都以 **可选工具**（`optional: true`）注册。OpenClaw 的规则是：**可选工具永远不会自动启用，必须显式加入工具允许列表，模型才看得见它们。**
 
 只安装并启用插件、不配置这一步时，表现就是：`/fish image` 这类指令能用，但你跟机器人说“帮我画条鱼”，它完全不知道有生图能力。
 
@@ -24,6 +24,8 @@
 
 `0.1.0-alpha.16` 修复媒体并发缓存、重复链接和向导覆盖工具授权的问题。生图、视频、语音、表情包与解析媒体统一通过当前会话发送，返回通道回执；失败可用 `/fish resend 编号` 重发已有结果。运行 `openclaw fatfish doctor` 可检查配置和本机依赖，不调用计费模型。看视频技能默认在安装或主动更新时拉取 GitHub 最新版，支持 `rollback-video-skill` 回退。QQ 实际媒体收发仍待真实环境验证。
 
+`0.1.0-alpha.17` 新增 [PNG 状态面板](docs/status-panel.md)、[持久生成任务与恢复查询](docs/tasks.md)、[标准语音/视频附件入口](docs/attachments.md)、[可选群聊策略](docs/chat-strategy.md)和按用户/群授权。管理员私聊 `/fish status` 查看模型、上下文、日/月观测用量、主机与功能状态；未知数据显示不可用。图片失败自动退回同权限文字。
+
 ## 功能状态
 
 | 功能 | 状态 | 说明 |
@@ -31,16 +33,17 @@
 | 接入通道 | 实验性 | 支持官方 QQBot（OpenClaw 内建 `qqbot`）与 [SnowLuma OneBot](docs/setup.md) 两种 |
 | 配置向导 | 实验性 | [官方机器人](docs/qqbot.md) / [SnowLuma](docs/setup.md) |
 | TTS / 音色克隆 | 实验性 | [MiMo 云端语音及克隆配置](docs/cloud-providers.md)，也可选 Edge TTS；默认关闭 |
-| STT 语音识别 | 实验性 | 硅基流动接口已验证；QQ 语音输入链路尚未完成 |
-| 看视频 | 实验性 | [可选视频理解技能](docs/video-watch.md)：HTTPS 视频直链、抽帧和可选 STT；QQ 视频附件未接通 |
+| STT 语音识别 | 实验性 | 硅基流动供应商与[标准附件入口](docs/attachments.md)，需宿主提供媒体事实及 FFmpeg；私有 SILK 需通道转换 |
+| 看视频 | 实验性 | [视频理解技能](docs/video-watch.md)：标准附件或 HTTPS 视频文件直链、抽帧和可选 STT |
 | 媒体链接解析 | 实验性 | [解析平台链接并发送媒体](docs/media-parse.md)：依赖 yt-dlp，默认关闭，可用 `/fish parse on` 开启 |
 | 生图 / 生视频 | 实验性 | [Agnes 云端模型](docs/cloud-providers.md)或[本机 ComfyUI](docs/comfyui.md)；视频服务曾返回繁忙，QQ 端到端未验证 |
 | QQ 管理员 / 权限 | 实验性 | [配置 QQ 管理员与权限](docs/permissions.md)：SnowLuma 填 QQ 号，官方机器人填 openid（`/fish whoami` 查询） |
 | QQ 黑名单 | 实验性 | [屏蔽用户和群](docs/blacklist.md)，标识同时接受 QQ 号与 openid |
 | 表情包 | 实验性 | [导入和选用表情包](docs/stickers.md)；默认关闭，QQ 发送尚未实测 |
 | 聊天人格 | 实验性 | [配置人格和说话风格](docs/persona.md)，支持管理员在 QQ 中调整 |
-| 自然群聊决策 / 管理面板 | 计划中 | 需要先验证 QQ 通道的群消息接入 |
-| QQ 状态卡片 | 设计中 | [字段、指令和权限设计](docs/status-panel.md)，尚未实现 |
+| 自然群聊策略 | 实验性 | [去重、短期观察、消息合并和限频](docs/chat-strategy.md)，默认关闭；上游需交付群消息和 @ 标记 |
+| QQ 状态卡片 | 已实现，待实机验证 | [图片/文字面板](docs/status-panel.md)，原生/WASM 渲染，完整信息仅管理员私聊 |
+| 生成任务队列 | 已实现，待实机验证 | [任务查询、取消、恢复和重发](docs/tasks.md)，Agnes 视频重启后只查询原任务 |
 
 云端模型可能调整免费额度、限速和价格，请以服务商实时公告为准。Edge TTS 不需要本项目收取 API 费用，但使用的是在线服务，服务可能变化；本地模型也会产生设备和电力成本。模型文件须遵守各自许可，不会随本仓库发布。
 
@@ -79,6 +82,7 @@ openclaw fatfish install-snowluma
 先将仓库下载到运行 OpenClaw 的机器，然后在该目录执行：
 
 ```bash
+npm ci --legacy-peer-deps --ignore-scripts
 openclaw plugins install --link .
 openclaw plugins enable fatfish
 openclaw plugins inspect fatfish --runtime --json
@@ -90,6 +94,22 @@ openclaw plugins inspect fatfish --runtime --json
 
 ## 路线与参与
 
+```mermaid
+flowchart LR
+  QQ[QQ 通道] --> OC[OpenClaw 会话]
+  OC --> Gate[身份 / 黑名单 / 功能权限]
+  Gate --> Panel[状态采集 / PNG 或文字]
+  Gate --> Jobs[持久生成任务]
+  Gate --> Media[附件 STT / 视频 / 链接 / 表情]
+  Jobs --> Provider[可替换供应商]
+  Panel --> Send[当前会话发送 / 回执]
+  Provider --> Send
+  Media --> Send
+  Send --> QQ
+```
+
 请看 [架构与路线](docs/architecture.md) 和 [路线与验证记录](docs/ROADMAP.md)。运行 `npm test` 执行不依赖 QQ 或外部服务的测试。欢迎通过 GitHub 提交 Issue 或 Pull Request；不要提交真实 QQ 记录、访问令牌或服务商密钥。
 
 本项目与 OpenClaw、SnowLuma、MaiBot、Microsoft、腾讯均无官方隶属关系。
+
+代码采用 MIT 许可；随包字体的 OFL 1.1 许可、来源与构建记录位于 `assets/panel/`，渲染器遵循各自依赖许可。
