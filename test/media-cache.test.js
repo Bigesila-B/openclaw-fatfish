@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readdir, rm, utimes, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { cleanupCache, startCacheJanitor } from '../src/media-cache.js';
+import { cleanupCache, leaseCachePaths, startCacheJanitor } from '../src/media-cache.js';
 
 const DAY = 86400000;
 
@@ -57,4 +57,21 @@ test('缓存目录不存在时清理不报错', async t => {
   const result = await cleanupCache(join(dir, 'missing'), {});
   assert.equal(result.removed, 0);
   assert.equal(result.total, 0);
+});
+
+test('嵌套任务缓存会被清理，但下载或发送期间的租约会保护文件', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'fatfish-cache-test-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const job = join(dir, 'job-test');
+  await mkdir(job);
+  await aged(job, 'active.mp4', 100, 8);
+  const release = leaseCachePaths([job]);
+  const active = await cleanupCache(dir, { maxBytes: 0, maxAgeDays: 0 });
+  assert.equal(active.removed, 0);
+  assert.equal(active.total, 100);
+  release();
+  release();
+  const idle = await cleanupCache(dir, { maxBytes: 0, maxAgeDays: 0 });
+  assert.equal(idle.removed, 1);
+  assert.deepEqual(await readdir(dir), []);
 });

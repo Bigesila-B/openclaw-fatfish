@@ -1,10 +1,35 @@
 import { spawn } from 'node:child_process';
-import { readdir, stat, unlink } from 'node:fs/promises';
-import { join } from 'node:path';
+import { lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, utimes, writeFile } from 'node:fs/promises';
+import { isAbsolute, join, relative, resolve, sep, extname } from 'node:path';
+import { createHash, randomUUID } from 'node:crypto';
+import { leaseCachePaths } from '../media-cache.js';
 
 // yt-dlp 的 -J 输出可能包含很长的格式列表，给一个上限避免内存被打满。
 const MAX_STDOUT = 8 * 1024 * 1024;
 const MAX_STDERR = 64 * 1024;
+const downloads = new Map();
+const mediaExtensions = new Set(['.mp4', '.mkv', '.webm', '.mov', '.mp3', '.m4a', '.ogg', '.opus', '.wav', '.flac', '.jpg', '.jpeg', '.png', '.webp', '.gif']);
+
+function inside(root, path) {
+  const rel = relative(root, path);
+  return rel && !isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${sep}`);
+}
+
+async function validateFiles(root, paths, maxBytes) {
+  const files = [];
+  let total = 0;
+  for (const path of [...new Set(paths)]) {
+    if (!isAbsolute(path) || !inside(root, path) || !mediaExtensions.has(extname(path).toLowerCase())) throw new Error('下载器返回了无效的媒体文件。');
+    const info = await lstat(path);
+    if (!info.isFile() || !inside(root, await realpath(path))) throw new Error('下载器返回了无效的媒体文件。');
+    total += info.size;
+    if (!info.size) throw new Error('下载的媒体文件为空。');
+    if (total > maxBytes) throw new Error('下载文件超过大小上限，已删除。');
+    files.push({ path, size: info.size });
+  }
+  if (!files.length) throw new Error('没有下载到可发送的媒体文件。');
+  return files;
+}
 
 export function runYtdlp(args, { bin = 'yt-dlp', timeoutMs = 90000 } = {}) {
   return new Promise((resolve, reject) => {
@@ -56,7 +81,7 @@ export function normalizeInfo(info, url) {
 }
 
 export async function probe(url, { bin, timeoutMs = 60000, run = runYtdlp, cookiesFile } = {}) {
-  const args = ['-J', '--no-playlist', '--no-warnings', '--socket-timeout', '15'];
+  const args = ['-J', '--ignore-config', '--no-playlist', '--no-warnings', '--socket-timeout', '15'];
   if (cookiesFile) args.push('--cookies', cookiesFile);
   args.push('--', url);
   const { stdout } = await run(args, { bin, timeoutMs });
@@ -66,34 +91,59 @@ export async function probe(url, { bin, timeoutMs = 60000, run = runYtdlp, cooki
 }
 
 export async function download(url, { bin, dir, maxBytes, timeoutMs = 180000, run = runYtdlp, cookiesFile } = {}) {
-  const before = new Set(await readdir(dir).catch(error => {
-    if (error.code === 'ENOENT') return [];
-    throw error;
-  }));
-  const args = [
-    '-f', 'bv*+ba/b',
-    '--merge-output-format', 'mp4',
-    '--no-playlist', '--no-warnings', '--no-progress',
-    '--restrict-filenames',
-    '--max-filesize', String(maxBytes)
-  ];
-  // B站等平台对数据中心 IP 有风控，提供 Cookie 文件可以显著提高成功率。
-  if (cookiesFile) args.push('--cookies', cookiesFile);
-  args.push('-o', join(dir, '%(extractor)s-%(id)s.%(ext)s'), '--', url);
-  await run(args, { bin, timeoutMs });
-  const after = await readdir(dir);
-  const files = [];
-  for (const name of after) {
-    if (before.has(name)) continue;
-    const path = join(dir, name);
-    const info = await stat(path).catch(() => null);
-    if (!info?.isFile()) continue;
-    if (info.size > maxBytes) {
-      await unlink(path).catch(() => {});
-      throw new Error('下载文件超过大小上限，已删除。');
+  if (!Number.isFinite(maxBytes) || maxBytes <= 0) throw new Error('媒体大小上限无效。');
+  await mkdir(resolve(dir), { recursive: true, mode: 0o700 });
+  // Windows 的 TEMP 可能是 RUNNER~1 形式的短路径，边界校验必须与真实路径一致。
+  const root = await realpath(resolve(dir));
+  // Cookie 变化后不复用旧结果；URL 只保存摘要，不把带签名的链接写入缓存清单。
+  const cookieVersion = cookiesFile ? await lstat(cookiesFile).then(s => `${cookiesFile}:${s.size}:${s.mtimeMs}`) : '';
+  const key = createHash('sha256').update(`${url}\n${cookieVersion}`).digest('hex');
+  const manifest = join(root, `${key}.json`);
+  const flightKey = `${root}:${key}:${maxBytes}`;
+  if (downloads.has(flightKey)) return downloads.get(flightKey);
+  const work = async () => {
+    try {
+      const cached = JSON.parse(await readFile(manifest, 'utf8'));
+      if (cached.version === 1 && Array.isArray(cached.files) && cached.files.length <= 16) {
+        const files = await validateFiles(root, cached.files.map(path => resolve(root, path)), maxBytes);
+        const now = new Date();
+        await Promise.all([...files.map(file => utimes(file.path, now, now)), utimes(manifest, now, now)]);
+        return files;
+      }
+    } catch { /* 缓存过期、文件已清理或大小限制变化时，重新下载。 */ }
+    const jobDir = await mkdtemp(join(root, 'job-'));
+    const temporary = `${manifest}.${randomUUID()}.tmp`;
+    const release = leaseCachePaths([jobDir, manifest, temporary]);
+    let published = false;
+    try {
+      const args = [
+        '-f', 'bv*+ba/b',
+        '--merge-output-format', 'mp4',
+        '--ignore-config', '--no-playlist', '--no-warnings', '--no-progress',
+        '--restrict-filenames', '--no-simulate',
+        '--print', 'after_move:%(filepath)j',
+        '--max-filesize', String(maxBytes)
+      ];
+      if (cookiesFile) args.push('--cookies', cookiesFile);
+      args.push('-o', join(jobDir, '%(extractor)s-%(id)s.%(ext)s'), '--', url);
+      const { stdout } = await run(args, { bin, timeoutMs });
+      let paths;
+      try { paths = stdout.split(/\r?\n/).filter(line => line.trim()).map(line => JSON.parse(line)); }
+      catch { throw new Error('下载器未返回有效的媒体清单，请更新 yt-dlp。'); }
+      if (paths.length > 16) throw new Error('下载的媒体数量超过上限。');
+      const files = await validateFiles(jobDir, paths, maxBytes);
+      await writeFile(temporary, JSON.stringify({ version: 1, files: files.map(file => relative(root, file.path)) }), { mode: 0o600, flag: 'wx' });
+      await rename(temporary, manifest);
+      published = true;
+      return files;
+    } finally {
+      release();
+      await rm(temporary, { force: true });
+      if (!published) await rm(jobDir, { recursive: true, force: true });
     }
-    files.push({ path, size: info.size });
-  }
-  if (!files.length) throw new Error('没有下载到可发送的媒体文件。');
-  return files;
+  };
+  const promise = work();
+  downloads.set(flightKey, promise);
+  try { return await promise; }
+  finally { downloads.delete(flightKey); }
 }

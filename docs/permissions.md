@@ -50,15 +50,20 @@
 /fish allow tts off
 /fish allow parse on
 /fish allow parse off
+/fish allow stt on
+/fish allow image on group 123456789
+/fish allow video off user 987654321
+/fish allow video inherit user 987654321
 /fish parse status
 /fish persona status
 ```
 
-初始时普通用户的生图、生视频、看视频、表情包、语音合成和媒体解析权限均为关闭。开关适用于本插件所有 QQ 会话，并独立控制各项能力；它们仅授予使用机会，还需功能已配置、启用且 OpenClaw 及通道允许调用。管理员默认可用已启用的功能。普通用户不能更改开关。插件只接受 OpenClaw 传递的 `snowluma` 通道和发送者 ID，缺少身份时拒绝，不能通过消息内容自称管理员。
+初始时普通用户七项媒体权限均关闭。默认开关适用于本插件所有 QQ 会话，单人和单群规则只适用于设置时的通道与机器人账号。判定优先级为黑名单 > 管理员 > 单人规则 > 单群规则 > 默认权限；`inherit` 删除该功能的独立规则并恢复继承。QQBot 的群标识应使用通道给出的 openid。功能仍须配置、启用且 OpenClaw 及通道允许调用，不能通过消息内容自称管理员。
 
-变更保存在 OpenClaw 状态目录的 `fatfish/permissions.json`，重启保留。此 Alpha 暂不支持多个 Gateway 同时写入同一份文件、按群设置或按人设置额度。不要手动给予他人文件写权限。
+变更保存在 OpenClaw 状态目录的 `fatfish/permissions.json`，重启保留。暂不支持多个 Gateway 同时写入同一份文件或计费额度管理；单人/单群规则最多 1000 条。不要给予他人文件写权限。`/fish permissions` 汇总默认开关及独立规则数量，不在群中回显完整名单。
 
 管理员也可配置机器人的聊天人格，具体见[人格教程](persona.md)。
+管理员私聊 `/fish status` 可查询完整[状态面板](status-panel.md)，面板不属于普通用户媒体权限。
 可以指定不回复的 QQ 用户和群，详见[黑名单教程](blacklist.md)。
 
 生图与视频的自然语言工具及 `/fish image`、`/fish video` 走同一权限检查；普通用户的权限在生成过程中被撤销时不返回生成结果。语音合成同样需要 `tts` 权限，并按会话限频（默认 30 秒，可用 `tts.cooldownSeconds` 调整）。

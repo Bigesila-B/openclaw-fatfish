@@ -35,7 +35,7 @@ test('config patch only targets requested settings and does not grant optional t
 
   // 群号留空时不做通道级限制：任何人都能私聊，群里 @ 也能触发。
   const open = buildPatch({ wsUrl: 'ws://localhost:3001/', token: 'token', admins: ['123456'], groups: [], persona: '' });
-  assert.equal(open.channels.snowluma.allowFrom, undefined);
+  assert.equal(open.channels.snowluma.allowFrom, null, '删除旧名单而不是省略字段');
 });
 
 test('显式开启时才写入 tools.alsoAllow，且不会变成严格白名单', () => {
@@ -43,6 +43,14 @@ test('显式开启时才写入 tools.alsoAllow，且不会变成严格白名单'
   // 用 alsoAllow 追加，避免 tools.allow 那种严格白名单把核心工具一起关掉。
   assert.deepEqual(patch.tools, { alsoAllow: ['fatfish'] });
   assert.equal(patch.tools.allow, undefined);
+  const again = buildPatch({ wsUrl: 'ws://localhost:3001/', token: 'token', admins: ['123456'], groups: [], persona: '', enableTools: true, existingAlsoAllow: ['other-plugin', 'fatfish'] });
+  assert.deepEqual(again.tools.alsoAllow, ['other-plugin', 'fatfish']);
+});
+
+test('向导仅写新旧宿主共有的会话权限，避免提示修改字段改名导致配置失效', () => {
+  const patch = buildPatch({ wsUrl: 'ws://localhost:3001/', token: 'token', admins: ['123456'], groups: [], persona: '简短自然' });
+  assert.deepEqual(patch.plugins.entries.fatfish.hooks, { allowConversationAccess: true });
+  assert.equal(patch.plugins.entries.fatfish.config.status.captureUsage, true);
 });
 
 test('官方 QQBot 的配置补丁写入 AppID/AppSecret 且不覆盖来源限制', () => {
@@ -139,4 +147,35 @@ test('wizard can install the latest video skill when requested', async () => {
   };
   await runWizard(ui, cli, async () => true);
   assert.deepEqual(invoked, [['fatfish', 'install-video-skill']]);
+});
+
+test('重复运行向导保留其他工具授权，并在留空群号时明确删除旧名单', async () => {
+  const confirmations = [false, true, false, false, true, false];
+  const answers = ['ws://localhost:3001', '123456', ''];
+  const output = [], writes = [];
+  const ui = { print: text => output.push(text), confirm: async () => confirmations.shift(), askValid: async (_label, _default, parse) => parse(answers.shift()), secret: async () => 'private-token' };
+  const cli = {
+    capture: async args => ({ code: 0, stdout: args[0] === 'config' && args[1] === 'get' ? JSON.stringify({ alsoAllow: ['other-plugin', 'fatfish'] }) : args[1] === 'list' ? JSON.stringify({ plugins: [{ id: 'openclaw-snowluma', enabled: true }] }) : JSON.stringify({ plugin: { status: 'loaded' } }) }),
+    interactive: async () => 0,
+    input: async (_args, input) => { writes.push(JSON.parse(input)); return { code: 0 }; }
+  };
+  await runWizard(ui, cli, async () => true, { enableTools: true });
+  assert.deepEqual(writes[1].tools.alsoAllow, ['other-plugin', 'fatfish']);
+  assert.equal(writes[1].channels.snowluma.allowFrom, null);
+  assert.match(output.join('\n'), /清除旧的来源名单/);
+  assert.doesNotMatch(output.join('\n'), /private-token/);
+});
+
+test('无法读取原工具配置时停止，不以空数组覆盖现有授权', async () => {
+  const confirmations = [false, true, false, false];
+  const answers = ['ws://localhost:3001', '123456', ''];
+  const ui = { print() {}, confirm: async () => confirmations.shift(), askValid: async (_label, _default, parse) => parse(answers.shift()), secret: async () => 'token' };
+  let writes = 0;
+  const cli = {
+    capture: async args => args[0] === 'config' && args[1] === 'get' ? { code: 1, error: 'config invalid' } : { code: 0, stdout: JSON.stringify({ plugins: [{ id: 'openclaw-snowluma', enabled: true }] }) },
+    interactive: async () => 0,
+    input: async () => { writes++; return { code: 0 }; }
+  };
+  await assert.rejects(runWizard(ui, cli, async () => true, { enableTools: true }), /无法读取现有工具/);
+  assert.equal(writes, 0);
 });

@@ -10,18 +10,21 @@ permissions:
 
 jobs:
   test:
-    name: Node ${{ matrix.node }}
-    runs-on: ubuntu-latest
+    name: ${{ matrix.os }} / Node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         node: ['22', '24']
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-      # 仓库没有运行时依赖，openclaw 只是 peerDependency，因此不执行 npm install。
+      # 安装渲染器；OpenClaw 由宿主提供，不在 CI 安装整个 peerDependency。
+      - name: 安装依赖
+        run: npm ci --legacy-peer-deps --ignore-scripts
       - name: 语法检查
         run: npm run check
       - name: 单元测试

@@ -38,17 +38,22 @@ const manifest = JSON.parse(await readFile(new URL('openclaw.plugin.json', root)
 const plugin = canStub ? (await import('../src/index.js')).default : null;
 
 // 模拟 OpenClaw 传给插件的注册接口，只实现本插件实际用到的部分。
-function createHarness({ config = {}, stateDir, registrationMode = 'full' }) {
-  const captured = { cli: [], commands: [], tools: [], hooks: [], mediaProviders: [] };
+function createHarness({ config = {}, stateDir, registrationMode = 'full', sendMedia }) {
+  const captured = { cli: [], commands: [], tools: [], hooks: [], mediaProviders: [], services: [], outbound: [] };
   const api = {
     registrationMode,
     pluginConfig: config,
+    config: { channels: {} },
     logger: { warn() {}, error() {}, info() {} },
-    runtime: { state: { resolveStateDir: () => stateDir } },
+    runtime: { state: { resolveStateDir: () => stateDir }, channel: { outbound: { loadAdapter: async () => ({ sendMedia: async options => {
+      captured.outbound.push(options);
+      return sendMedia ? sendMedia(options) : { channel: 'snowluma', messageId: `message-${captured.outbound.length}` };
+    } }) } } },
     registerCli(fn, opts) { captured.cli.push({ fn, opts }); },
     registerCommand(command) { captured.commands.push(command); },
     registerTool(tool, meta = {}) { captured.tools.push({ tool, meta }); },
     registerMediaUnderstandingProvider(provider) { captured.mediaProviders.push(provider); },
+    registerService(service) { captured.services.push(service); },
     on(event, handler) { captured.hooks.push({ event, handler }); }
   };
   plugin.register(api);
@@ -58,8 +63,9 @@ function createHarness({ config = {}, stateDir, registrationMode = 'full' }) {
 // 每个用例使用独立的临时状态目录，避免多个用例共享权限、表情或黑名单文件。
 async function setup(t, config = {}, options = {}) {
   const stateDir = await mkdtemp(join(tmpdir(), 'fatfish-index-'));
-  t.after(() => rm(stateDir, { recursive: true, force: true }));
-  return { ...createHarness({ config, stateDir, ...options }), stateDir };
+  const harness = createHarness({ config, stateDir, ...options });
+  t.after(async () => { for (const service of harness.services) await service.stop?.(); await rm(stateDir, { recursive: true, force: true }); });
+  return { ...harness, stateDir };
 }
 
 const adminCtx = { messageChannel: 'snowluma', requesterSenderId: '10001', sessionKey: 'session-1' };
@@ -104,9 +110,40 @@ test('注册 fish 命令与 fatfish CLI，命令要求通道鉴权', { skip: ski
   assert.equal(captured.cli[0].opts?.descriptors?.[0]?.name, 'fatfish');
 });
 
-test('挂载黑名单和人格两个钩子', { skip: skipSdk }, async t => {
+test('挂载黑名单、人格与只读用量观测钩子', { skip: skipSdk }, async t => {
   const captured = await setup(t);
-  assert.deepEqual(captured.hooks.map(entry => entry.event).sort(), ['before_dispatch', 'before_prompt_build']);
+  assert.deepEqual(captured.hooks.map(entry => entry.event).sort(), ['before_dispatch', 'before_prompt_build', 'llm_output', 'message_received', 'reply_payload_sending']);
+});
+
+test('QQ 面板指令贯通数字观测、权限过滤、PNG 渲染与当前会话发送', { skip: skipSdk }, async t => {
+  const h = await setup(t, { admins: ['10001'], status: { cooldownSeconds: 0 } });
+  const hook = name => h.hooks.find(item => item.event === name).handler;
+  await hook('llm_output')({ runId: 'r', model: 'actual-model', provider: 'p', usage: { total: 77 }, prompt: 'private-prompt-do-not-store' }, { messageProvider: 'snowluma', sessionKey: 's' });
+  await hook('reply_payload_sending')({ channel: 'snowluma', runId: 'r', sessionKey: 's', usageState: { contextUsedTokens: 12, contextTokenBudget: 1000 } }, { channelId: 'snowluma', accountId: 'default' });
+  const ctx = { channel: 'snowluma', senderId: '10001', from: 'private:10001', sessionKey: 's', isAuthorizedSender: true };
+  const text = await h.commands[0].handler({ ...ctx, args: 'status text' });
+  assert.match(text.text, /actual-model/);
+  assert.match(text.text, /77 tokens/);
+  assert.match(text.text, /12 \/ 1,000/);
+  assert.doesNotMatch(await readFile(join(h.stateDir, 'fatfish', 'usage.json'), 'utf8'), /private-prompt-do-not-store/);
+  assert.equal(h.outbound.length, 0);
+  assert.match((await h.commands[0].handler({ ...ctx, args: 'status image' })).text, /面板已发送/);
+  assert.equal(h.outbound.length, 1);
+  assert.equal((await readFile(h.outbound[0].mediaUrl)).subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+  assert.match((await h.commands[0].handler({ ...ctx, from: 'group:222222', args: 'status text' })).text, /仅限管理员私聊/);
+});
+
+test('标准入站附件给模型提供不含路径的会话句柄，黑名单也约束任务工具', { skip: skipSdk }, async t => {
+  const h = await setup(t, { admins: ['10001'], stt: { enabled: true } });
+  const hook = name => h.hooks.find(item => item.event === name).handler;
+  const source = { channelId: 'snowluma', accountId: 'default', sessionKey: 'session-1', conversationId: 'group:222222', senderId: '10001' };
+  await hook('before_dispatch')({ content: '转写语音', media: [{ kind: 'audio', path: 'private-server-path.wav' }] }, source);
+  const hint = await hook('before_prompt_build')({}, { ...source, channelId: 'group:222222', chatId: 'group:222222', messageProvider: 'snowluma' });
+  assert.match(hint.appendSystemContext, /audio/);
+  assert.doesNotMatch(hint.appendSystemContext, /private-server-path/);
+  await h.commands[0].handler({ channel: 'snowluma', senderId: '10001', isAuthorizedSender: true, from: 'private:10001', args: 'blacklist add user 10001' });
+  const tools = toolMap(h, { ...adminCtx, from: 'group:222222' });
+  await assert.rejects(tools.get('fatfish_task').descriptor.execute('id', { action: 'list' }), /黑名单/);
 });
 
 test('cli-metadata 模式只注册 CLI，不注册工具和钩子', { skip: skipSdk }, async t => {
@@ -314,4 +351,42 @@ test('STT 供应商仅在启用时注册，缺少密钥时返回 null', { skip: 
   assert.equal(provider.resolveAuth(), null, '没有密钥时必须返回 null 而不是抛错或返回空密钥');
   process.env.SILICONFLOW_API_KEY = 'test-key';
   assert.deepEqual(provider.resolveAuth(), { kind: 'api-key', apiKey: 'test-key', source: 'SILICONFLOW_API_KEY' });
+});
+
+test('缓存清理随服务生命周期启停，discovery 不启动后台任务', { skip: skipSdk }, async t => {
+  const full = await setup(t);
+  assert.equal(full.services.length, 2);
+  await full.services[0].start();
+  await full.services[0].start();
+  await full.services[0].stop();
+  await full.services[0].stop();
+  const discovery = await setup(t, {}, { registrationMode: 'discovery' });
+  assert.equal(discovery.services.length, 0);
+});
+
+test('自然语言工具与图片指令都直接发送媒体，返回回执而不是让模型猜文件路径', { skip: skipSdk }, async t => {
+  const fetchBefore = globalThis.fetch, keyBefore = process.env.AGNES_API_KEY;
+  t.after(() => { globalThis.fetch = fetchBefore; if (keyBefore === undefined) delete process.env.AGNES_API_KEY; else process.env.AGNES_API_KEY = keyBefore; });
+  process.env.AGNES_API_KEY = 'test-only';
+  let generated = 0;
+  globalThis.fetch = async () => { generated++; return new Response(JSON.stringify({ data: [{ b64_json: Buffer.from('89504e470d0a1a0a00000000', 'hex').toString('base64') }] })); };
+  const harness = await setup(t, { admins: ['10001'], image: { enabled: true, provider: 'agnes' } });
+  for (const service of harness.services) await service.start();
+  t.after(async () => { for (const sent of harness.outbound) await rm(sent.mediaUrl, { force: true }); });
+  const noRoute = toolMap(harness).get('fatfish_generate_image');
+  await assert.rejects(noRoute.descriptor.execute('missing-target', { prompt: 'fish' }), /无法确定/);
+  assert.equal(generated, 0, '目的地不可用时不调用供应商');
+  const current = { ...adminCtx, deliveryContext: { channel: 'snowluma', to: 'private:10001', accountId: 'default' } };
+  const result = await toolMap(harness, current).get('fatfish_generate_image').descriptor.execute('call', { prompt: 'fish' });
+  assert.equal(result.details.state, 'queued');
+  const waitFor = async condition => { const until = Date.now() + 5000; while (!await condition()) { if (Date.now() > until) throw new Error('队列没有完成'); await new Promise(resolve => setTimeout(resolve, 10)); } };
+  await waitFor(() => harness.outbound.length === 1);
+  assert.equal(harness.outbound.length, 1);
+  assert.match(result.content[0].text, /任务/);
+  assert.equal(JSON.stringify(result).includes(harness.outbound[0].mediaUrl), false);
+  const reply = await harness.commands[0].handler({ channel: 'snowluma', senderId: '10001', from: 'private:10001', args: 'image fish', isAuthorizedSender: true });
+  await waitFor(() => harness.outbound.length === 2);
+  assert.equal(harness.outbound.length, 2);
+  assert.equal(reply.mediaUrl, undefined, '不能再由回复分发器发送第二次');
+  assert.match(reply.text, /任务/);
 });

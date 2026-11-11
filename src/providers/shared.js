@@ -9,15 +9,31 @@ export function credential(name) {
   if (!key || /[\r\n]/.test(key)) throw new Error(`请在 Gateway 环境中设置 ${name}。`);
   return key;
 }
-export async function jsonRequest(url, key, body, timeout = 120000, fetchFn = fetch) {
+export async function jsonRequest(url, key, body, timeout = 120000, fetchFn = fetch, { signal } = {}) {
   let response;
-  try { response = await fetchFn(url, { method: body ? 'POST' : 'GET', headers: { authorization: `Bearer ${key}`, ...(body ? { 'content-type': 'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}), redirect: 'error', signal: AbortSignal.timeout(timeout) }); }
-  catch { throw new Error('服务连接失败或超时；服务端可能仍在处理，请勿盲目重试。'); }
-  if (!response.ok) throw new Error(response.status === 503 ? '服务返回 HTTP 503，当前可能繁忙；请求可能未完成，请稍后检查后手动重试。' : `服务返回 HTTP ${response.status}；请求可能未完成，请检查服务状态和额度。`);
+  try { response = await fetchFn(url, { method: body ? 'POST' : 'GET', headers: { authorization: `Bearer ${key}`, ...(body ? { 'content-type': 'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}), redirect: 'error', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeout)]) : AbortSignal.timeout(timeout) }); }
+  catch { const error = new Error('服务连接失败或超时；服务端可能仍在处理，请勿盲目重试。'); error.ambiguous = Boolean(body); throw error; }
+  if (!response.ok) {
+    const error = new Error(response.status === 503 ? '服务返回 HTTP 503，当前可能繁忙；请求可能未完成，请稍后检查后手动重试。' : `服务返回 HTTP ${response.status}；请求可能未完成，请检查服务状态和额度。`);
+    error.status = response.status; error.ambiguous = Boolean(body) && response.status >= 500;
+    throw error;
+  }
   const length = Number(response.headers.get('content-length'));
   if (length > LIMIT * 2) throw new Error('服务返回数据过大。');
-  const raw = await response.text();
-  if (raw.length > LIMIT * 2) throw new Error('服务返回数据过大。');
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('服务返回了空响应。');
+  let bytes = 0;
+  const chunks = [];
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > LIMIT * 2) { await reader.cancel(); throw new Error('服务返回数据过大。'); }
+      chunks.push(Buffer.from(value));
+    }
+  } finally { reader.releaseLock(); }
+  const raw = Buffer.concat(chunks).toString('utf8');
   try { return JSON.parse(raw); } catch { throw new Error('服务返回的数据格式无效。'); }
 }
 export async function save(data, ext) {

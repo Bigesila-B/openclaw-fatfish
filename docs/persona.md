@@ -6,7 +6,7 @@
 
 已经安装并启用大肥鱼插件，配置 SnowLuma QQ 通道和[管理员 QQ 号](permissions.md)。该 QQ 号还必须通过 SnowLuma/OpenClaw 的通道命令授权。
 
-本功能使用 OpenClaw 的 `before_prompt_build` 钩子。针对支持该设置的版本，须在 OpenClaw 配置中给大肥鱼启用相关钩子权限；它允许该插件接收聊天钩子的原始对话数据，本功能自身不读取或保存这些对话内容。保存前请审阅插件代码。`allowPromptModification` 为 `false` 时人格不会注入。
+本功能使用 OpenClaw 的 `before_prompt_build` 钩子。需允许会话访问；人格模块自身不保存对话正文。提示修改开关在 OpenClaw 2026.6.35 为 `allowPromptInjection`，当前官方文档为 `allowPromptModification`，均默认允许。示例省略这个版本相关字段；若已明确设为 false，按所用宿主 schema 开启，不能把两个名称一起写入严格配置。参见[官方钩子文档](https://docs.openclaw.ai/plugins/hooks)。
 
 将下面内容**合并**进现有配置，不要覆盖原有模型、QQ、管理员和其他插件配置：
 
@@ -17,8 +17,7 @@
       "fatfish": {
         "enabled": true,
         "hooks": {
-          "allowConversationAccess": true,
-          "allowPromptModification": true
+          "allowConversationAccess": true
         },
         "config": {
           "admins": ["123456789"],
@@ -54,7 +53,7 @@
 ## 3. 没有生效时
 
 - 检查插件已启用、人格不是关闭状态、提示词非空。
-- 检查 `allowConversationAccess` 和 `allowPromptModification`，以及插件检查结果中的钩子；某些运行模式可能不触发该钩子。
+- 检查 `allowConversationAccess` 和当前版本的提示修改策略，以及插件检查结果中的钩子；某些运行模式可能不触发该钩子。
 - 检查请求是否来自 SnowLuma；其他通道不会使用大肥鱼的人格。
 - 如果在 QQ 中设置失败，确认管理员 QQ 号和 SnowLuma 的命令授权、@ 触发规则；斜杠指令在具体 QQ 通道中的表现尚未实机验证。
 - 如果配置文件修改后不生效，先检查是否保存过 QQ 人格覆盖；`/fish persona reset` 会恢复配置文件内容。

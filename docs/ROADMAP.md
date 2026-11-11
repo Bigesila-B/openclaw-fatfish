@@ -6,6 +6,8 @@
 
 | 日期 | 环境 | 验证项 | 结果 |
 |---|---|---|---|
+| 2026-11-11 | Windows / Node 24.14.0 / OpenClaw 2026.6.35 | alpha.17 隔离加载、配置校验及真实 CLI PNG 预览 | 插件 loaded，9 个工具；配置通过；面板中文、CPU/内存/磁盘/NVIDIA 数据可渲染，未连接 QQ |
+| 2026-11-11 | Windows / Node 24.14.0 | alpha.17 安装包独立安装、原生/WASM PNG 与 FFmpeg 转码 | 字体/许可随包；安装后渲染通过；真实 FFmpeg 转为 16 kHz WAV，过长音频拒绝；无模型 API 调用 |
 | 2026-11-10 | Windows / Node 22.22.2 | `npm test` | 50 个用例：48 通过、2 跳过、0 失败 |
 | 2026-11-10 | Omarchy Linux / Node 24.22.1 | `npm test` | 同上 |
 | 2026-11-10 | OpenClaw 2026.11.2，`--dev` 隔离 profile | `plugins install --link` + `inspect --runtime` | `status=loaded`；6 个工具、`fish` 命令、`setup`/`install-video-skill`/`sticker` 子命令均已注册 |
@@ -13,13 +15,16 @@
 | 2026-11-10 | 同上 | `openclaw fatfish install-video-skill` | 从上游仓库安装成功，记录到具体提交 |
 | 2026-11-10 | SnowLuma v2.4.2 + QQ 3.34 + OpenClaw 2026.11.2 | 真实 QQ 私聊发送 `/fish help` | 机器人返回指令列表；SnowLuma 日志可见入站事件与出站引用回复，指令链路打通 |
 | 2026-11-11 | Windows / Node 22.22.2 | `npm test` | 91 个用例：89 通过、2 跳过、0 失败（新增官方 QQBot 通道、openid 身份、`tools.alsoAllow` 相关用例） |
+| 2026-11-11 | Windows / Node 24.14.0 / OpenClaw 2026.6.35 | alpha.16 隔离安装、运行时检查、配置验证和 `fatfish doctor` | 插件 `loaded`，7 个工具已注册；诊断能启动并报告空配置缺项；未连接真实 QQ |
+| 2026-11-11 | Windows / Node 24.14.0 | alpha.16 `npm test` 与 `npm run check` | 110 个用例：108 通过、2 跳过、0 失败；全部源码语法检查通过 |
+| 2026-11-11 | GitHub 最新默认分支 | 看视频技能实际安装与解析 | 成功记录 `44be7e702255126432cbfcb018e2e4c112e27a0c`；未执行视频分析或付费模型调用 |
 
 复现方式（始终使用独立状态目录，不要直接改已有 QQ 配置）：
 
 ```bash
 npm test
 npm run check
-openclaw --dev plugins install --link . --force --accept-capabilities
+openclaw --dev plugins install --link .
 openclaw --dev plugins inspect fatfish --runtime --json
 openclaw --dev config validate
 ```
@@ -39,13 +44,13 @@ openclaw --dev config validate
 
 ## 运行时注意（2026-11-11 补充）
 
-- **可选工具默认对模型不可见。** 插件 7 个工具都是 `optional: true`，OpenClaw 的规则是可选工具永不自动启用。必须写 `tools.alsoAllow: ["fatfish"]`（或具体工具名）并重启 Gateway，否则只有 `/fish` 指令能用，AI 完全不知道有生图、解析这些能力。这是“装了插件却用不了”的最常见原因。
+- **可选工具默认对模型不可见。** 插件 9 个工具都是 `optional: true`，OpenClaw 的规则是可选工具永不自动启用。必须写 `tools.alsoAllow: ["fatfish"]`（或具体工具名）并重启 Gateway，否则只有 `/fish` 指令能用，AI 完全不知道有生图、解析这些能力。这是“装了插件却用不了”的最常见原因。
 - **官方 QQBot 拿不到 QQ 号。** 用户标识是 openid，`admins` 里填 QQ 号不会生效。用 `/fish whoami`（或官方 `/bot-me`）查询。
 - **`tools.allow` 与 `tools.alsoAllow` 语义不同。** `allow` 是严格白名单模式，`alsoAllow` 是追加。本插件推荐 `alsoAllow`，避免误伤核心工具。
 
 ## 运行时注意（2026-11-10 联调发现）
 
-- **人格钩子默认被网关拦截。** 非内置插件必须显式配置 `plugins.entries.fatfish.hooks.allowConversationAccess=true`，否则启动日志会出现 `typed hook "before_prompt_build" blocked`，人格静默不生效。向导只在选择配置人格时写入该字段，手动改配置的人容易踩到。
+- **人格钩子默认被网关拦截。** 非内置插件必须显式配置 `plugins.entries.fatfish.hooks.allowConversationAccess=true`，否则启动日志会出现 `typed hook "before_prompt_build" blocked`，人格静默不生效。alpha.17 向导默认启用只读用量观测的会话权限，选择人格时使用宿主默认的提示修改策略；旧手动配置需要自行补齐。
 - **`--dev` 必须写在子命令前。** `openclaw --dev gateway run` 使用隔离状态目录；写成 `openclaw gateway run --dev` 会指向主状态目录，并因另一个网关占用而启动失败。
 - **同一状态目录只能有一个网关。** 重启前先停止旧进程，否则新进程只做参数校验就退出，旧进程仍在跑旧配置（配置热加载可能掩盖这一点）。
 - **SnowLuma 必须在 QQ 登录前注入。** 先登录再注入会一直停在 `loggedIn=false`；QQ 启动后 1 秒内注入即可正常进入 `online`。
@@ -56,6 +61,31 @@ openclaw --dev config validate
 - `test/index.test.js` 通过 Node 的模块解析钩子把 `openclaw/plugin-sdk/*` 替换成本地桩，用来执行并断言插件装配逻辑。
 - 因此它验证的是“给定 SDK 行为时的装配是否正确”，不能替代真实运行时验证。真实加载验证见上面的记录表。
 - 其余测试直接测模块本身，不依赖 OpenClaw。
+
+## 0.1.0-alpha.17
+
+- 实现 PNG 状态面板：随包中文字体、本机/WASM 双渲染、同权限文字降级；管理员私聊完整状态、可选公开功能简报。
+- 分离数据采集与布局，真实会话模型和上下文来源可降级；数字用量按账号及时区日/月汇总，明确不完整性，不把未知值填零。
+- 新增持久生成任务队列、任务查询/取消/结果重发；Agnes 视频记录服务端编号，重启或超时只恢复原任务查询，未知提交不自动重提。
+- 新增标准宿主媒体附件入口、显式 STT 工具和有界 FFmpeg 转码；附件隔离与权限重查，私有 SILK/旧通道缺少事实时明确降级。
+- 新增默认关闭的群聊策略：去重、短期观察、消息合并、概率和冷却；旧通道 @ 信息缺失时兼容原路由。
+- 新增按用户/群的功能规则、inherit 恢复继承，绑定通道与机器人账号；更新帮助和各模块教程。
+- 依赖安装与打包现在包含渲染器、OFL 中文字体和许可；保留 Windows/Linux × Node 22/24 验证。
+
+真实 QQ 图片/语音/视频发送、未 @ 群消息可见性、两种通道的附件事实和私有语音编码仍需要现场验证。以上实现不等同于这些项目已通过实机验收。多节点队列、长期记忆、主动资源告警不包含在本版本。
+
+## 0.1.0-alpha.16
+
+- 修复媒体下载并发串文件、缓存命中误报失败：独立任务目录、yt-dlp 完成清单、有效缓存复用、同链接请求合并、累计大小校验和失败清理；解析并发默认最多 2 个。
+- 新增统一媒体发送适配层：生成前检查当前会话路由与发送能力，生图/视频/TTS/表情包/链接解析按通道回执报告结果，不再要求模型猜测文件路径或再次发送。
+- 新增 `/fish resend 编号 [file]`：持久保存发送进度，绑定原用户、会话、机器人账号与线程；重启后可重发未确认的已有结果，跳过已确认成功的文件。未知结果不会自动重试，以免重复发送。
+- 新增 `openclaw fatfish doctor`，向导写入后自动运行；仅检查配置、本机依赖和密钥是否存在，不调用计费模型，不证明 QQ 在线或 API 可用。
+- 修复向导替换其他插件的 `tools.alsoAllow`、留空群号却保留旧 `allowFrom` 的问题。
+- 看视频技能默认安装上游最新提交，验证后切换，失败保留旧版本；新增 `rollback-video-skill` 回退。保留子进程环境变量白名单。
+- 缓存清理改由 Gateway 服务生命周期管理，避免插件注册时启动重复定时器；下载与发送期间提供进程内文件租约。
+- 功能名称、权限标识与工具清单开始集中到功能注册表；语法检查自动遍历所有源码，CI 增加 Windows。
+
+此版本当时待办中的任务队列、标准附件入口、状态面板与轻量群聊策略已在 alpha.17 实现。仍需真实 QQ 多媒体及编码兼容性验证。当前发送适配层使用宿主公开的 `api.runtime.channel.outbound.loadAdapter`，依据通道返回的消息编号确认，不能证明终端用户已经阅读；通道是否支持语音或附件由其实现决定。
 
 ## 0.1.0-alpha.15
 
@@ -111,24 +141,25 @@ openclaw --dev config validate
 
 ### 阶段 1：媒体发送适配层
 
-- [ ] 抽象发送接口，带通道能力探测与失败回退
-- [ ] 明确“工具返回文件路径”和“消息已发送”之间的边界，避免模型误报已发送
-- [ ] 发送失败时给出可操作的错误，而不是静默丢弃
+- [x] 抽象发送接口，生成前检查路由与通道发送能力，支持显式按附件重发
+- [x] 明确“结果已准备”和“取得通道发送回执”之间的边界，避免模型误报已发送
+- [x] 发送失败时提供重发编号，保留发送进度
+- [ ] 真实 QQ 格式兼容性、自动转码与回执验证
 
 ### 阶段 2：语音与视频附件桥接
 
-- [ ] QQ 语音附件 → STT 链路
-- [ ] QQ 视频附件 → 直链解析或明确的降级提示
-- [ ] 附件大小、格式、超时的统一限制
+- [x] 标准宿主语音附件 → FFmpeg → STT 工具；真实 QQ SILK 仍待通道联调
+- [x] 标准宿主视频附件 → 视频理解；旧通道提供明确降级提示
+- [x] 附件大小、格式、超时及用户/会话/账号隔离
 
 ### 阶段 3：群聊决策
 
 - [ ] 先确认通道能否观察未 @ 的群消息
-- [ ] 消息合并、上下文观察、按群频率控制
-- [ ] 明确请求与管理指令不被闲聊频率误拦
+- [x] 默认关闭的消息合并、两分钟内存观察、按群频率控制
+- [x] 明确请求、@ 与管理指令不被闲聊频率误拦；旧通道缺少 @ 事实时保留宿主路由
 
 ### 阶段 4：状态面板与发布
 
-- [ ] 按 [状态面板设计](status-panel.md) 实现 `/fish status`
-- [ ] README 架构图与效果展示
+- [x] 按 [状态面板](status-panel.md) 实现 `/fish status`，图片/文字与权限降级
+- [x] README 模块图与本机 PNG 预览命令
 - [ ] 打 tag、写 release 说明

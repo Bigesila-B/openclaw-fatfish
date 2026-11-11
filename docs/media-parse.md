@@ -47,7 +47,7 @@ yt-dlp --version
       }
     }
   },
-  "tools": { "allow": ["fatfish_parse_link"] }
+  "tools": { "alsoAllow": ["fatfish_parse_link"] }
 }
 ```
 
@@ -56,7 +56,8 @@ yt-dlp --version
 | `enabled` | `false` | 初始开关；运行时可用 `/fish parse on\|off` 覆盖并持久化 |
 | `ytdlpPath` | `yt-dlp` | 可执行文件路径或命令名 |
 | `cookiesFile` | 无 | 可选的 Netscape 格式 Cookie 文件；B站等平台用数据中心 IP 访问会返回 412，提供 Cookie 能显著提高成功率 |
-| `maxFileMb` | `200` | 单个文件大小上限 |
+| `maxFileMb` | `200` | 一次下载结果的累计大小上限；同时向下载器传入单文件限制 |
+| `maxConcurrent` | `2` | 所有会话合计的解析任务并发上限，最多 8 |
 | `maxDurationSeconds` | `600` | 视频时长上限，`0` 表示不限制 |
 | `timeoutSeconds` | `180` | 单次下载超时 |
 | `cooldownSeconds` | `30` | 同一会话两次解析的最小间隔 |
@@ -81,18 +82,20 @@ yt-dlp --version
 /fish allow parse on
 ```
 
-之后把链接发给机器人即可。工具由模型调用：用户发链接并希望看内容时，模型会调用 `fatfish_parse_link`，插件下载后返回文件路径，模型再用消息工具把文件发到当前会话。
+之后把链接发给机器人即可。工具由模型调用：用户发链接并希望看内容时，模型调用 `fatfish_parse_link`，插件下载后通过当前 QQ 通道发送，并返回回执状态。模型无需再次调用消息工具，服务器路径不会出现在工具回复中。发送失败可按提示用 `/fish resend 编号` 重发已有文件。
 
 ## 4. 缓存与清理
 
 缓存目录：`<OpenClaw 状态目录>/fatfish/cache/media`。
+
+每次新下载使用独立任务目录，以 yt-dlp 的完成清单识别结果，不扫描其他用户的下载文件。同一链接可复用有效缓存；Cookie 文件变化后重新下载。清单中的越界路径、符号链接、半成品或累计超限结果会被拒绝，失败清理本次任务目录。缓存只保存链接摘要；发送记录保存在 `fatfish/deliveries/`，其中包含服务器路径和当前会话标识，请按私有运行数据管理。
 
 清理策略（满足任一条件）：
 
 - **按时间**：超过 `cacheTtlDays`（默认 7 天）的文件删除
 - **按体积**：总量超过 `cacheMaxMb`（默认 1024 MB）时，从最旧的文件开始删，直到回到上限以内
 
-后台清理每小时检查一次（`cleanupIntervalMinutes`），定时器 `unref`，不会拖住进程退出。插件启动时也会先跑一次。
+后台清理每小时检查一次（`cleanupIntervalMinutes`），随 Gateway 服务启动和停止。正在下载或发送的文件在当前进程内受到保护，清理器不会同时删除；同一状态目录仍应只运行一个 Gateway。
 
 ## 5. 限制
 
