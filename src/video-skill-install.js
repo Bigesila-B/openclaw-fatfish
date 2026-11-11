@@ -4,9 +4,8 @@ import { isAbsolute, join, relative, sep } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 const repository = 'https://github.com/Bigesila-B/video-context-builder-skills.git';
-// 固定到已人工审阅的提交。上游默认分支随时可能变化，只有显式升级这里才会换版本，
-// 避免“每次安装都拉最新代码并立刻执行”带来供应链风险。
-export const pinnedVideoSkillCommit = '44be7e702255126432cbfcb018e2e4c112e27a0c';
+// 默认在用户执行安装/更新时解析上游默认分支；每次聊天不会自动更新。
+const revisionPattern = /^[0-9a-f]{40}$/;
 const required = {
   'scripts/build_video_context.py': ['def build_video_context(', 'max_tokens', 'stt_api_options'],
   'scripts/probe_video.py': ['def probe_video('],
@@ -57,8 +56,31 @@ export async function resolveVideoSkill(stateDir) {
   try { await verifyCandidate(path); } catch { throw new Error('看视频引擎文件不完整或不兼容，请重新安装。'); }
   return { path, commit: value.commit };
 }
-export async function installVideoSkill(stateDir, { git = runGit, commit = pinnedVideoSkillCommit } = {}) {
-  if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error('视频技能版本号无效。');
+async function readPointer(root) {
+  try { return JSON.parse(await readFile(join(root, 'current.json'), 'utf8')); }
+  catch (error) { if (error.code === 'ENOENT') return null; throw new Error('视频技能版本记录损坏，请先备份并修复 current.json。'); }
+}
+
+async function writePointer(root, value) {
+  const temp = join(root, `current-${randomUUID()}.tmp`);
+  try {
+    await writeFile(temp, JSON.stringify(value) + '\n', { mode: 0o600, flag: 'wx' });
+    await rename(temp, join(root, 'current.json'));
+  } finally { await rm(temp, { force: true }); }
+}
+
+export async function rollbackVideoSkill(stateDir) {
+  const root = videoSkillRoot(stateDir);
+  const current = await readPointer(root);
+  if (!revisionPattern.test(current?.previousCommit ?? '')) throw new Error('没有可回退的看视频引擎版本。');
+  const path = join(root, 'versions', current.previousCommit);
+  await verifyCandidate(path);
+  await writePointer(root, { commit: current.previousCommit, previousCommit: current.commit, source: repository, installedAt: new Date().toISOString() });
+  return { commit: current.previousCommit, path };
+}
+
+export async function installVideoSkill(stateDir, { git = runGit, commit } = {}) {
+  if (commit !== undefined && !revisionPattern.test(commit)) throw new Error('视频技能版本号无效。');
   const root = videoSkillRoot(stateDir);
   const versions = join(root, 'versions');
   await mkdir(versions, { recursive: true, mode: 0o700 });
@@ -66,24 +88,23 @@ export async function installVideoSkill(stateDir, { git = runGit, commit = pinne
   const subpath = relative(root, staging);
   if (!subpath.startsWith('download-') || subpath.includes(sep) || isAbsolute(subpath)) throw new Error('临时安装目录无效。');
   try {
-    // 用 init + fetch 指定提交代替 clone 默认分支：拿到的一定是审阅过的那个版本。
     await git(['-c', 'core.hooksPath=', '-c', 'core.autocrlf=false', 'init', '-q', staging]);
     await git(['remote', 'add', 'origin', repository], staging);
-    await git(['fetch', '--depth', '1', 'origin', commit], staging);
+    await git(['fetch', '--depth', '1', 'origin', commit ?? 'HEAD'], staging);
+    const fetched = (await git(['rev-parse', 'FETCH_HEAD'], staging)).toLowerCase();
+    if (!revisionPattern.test(fetched) || (commit && fetched !== commit)) throw new Error('下载的视频技能提交与请求版本不一致，已拒绝安装。');
     await git(['checkout', '-q', 'FETCH_HEAD'], staging);
     const actual = (await git(['rev-parse', 'HEAD'], staging)).toLowerCase();
-    if (actual !== commit) throw new Error('下载的视频技能提交与固定版本不一致，已拒绝安装。');
+    if (actual !== fetched) throw new Error('下载的视频技能提交与检出版本不一致，已拒绝安装。');
     await verifyCandidate(staging);
-    const target = join(versions, commit);
+    const target = join(versions, actual);
     let exists = false;
     try { exists = (await stat(target)).isDirectory(); } catch (error) { if (error.code !== 'ENOENT') throw error; }
     if (!exists) await rename(staging, target);
     else await verifyCandidate(target);
-    const temp = join(root, `current-${randomUUID()}.tmp`);
-    try {
-      await writeFile(temp, JSON.stringify({ commit, source: repository, installedAt: new Date().toISOString() }) + '\n', { mode: 0o600, flag: 'wx' });
-      await rename(temp, join(root, 'current.json'));
-    } finally { await rm(temp, { force: true }); }
-    return { commit, path: target };
+    const previous = await readPointer(root);
+    const previousCommit = previous?.commit !== actual ? previous?.commit : previous?.previousCommit;
+    await writePointer(root, { commit: actual, ...(revisionPattern.test(previousCommit ?? '') ? { previousCommit } : {}), source: repository, installedAt: new Date().toISOString() });
+    return { commit: actual, path: target };
   } finally { await rm(staging, { recursive: true, force: true }); }
 }

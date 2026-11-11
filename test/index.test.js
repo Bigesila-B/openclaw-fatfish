@@ -38,17 +38,22 @@ const manifest = JSON.parse(await readFile(new URL('openclaw.plugin.json', root)
 const plugin = canStub ? (await import('../src/index.js')).default : null;
 
 // 模拟 OpenClaw 传给插件的注册接口，只实现本插件实际用到的部分。
-function createHarness({ config = {}, stateDir, registrationMode = 'full' }) {
-  const captured = { cli: [], commands: [], tools: [], hooks: [], mediaProviders: [] };
+function createHarness({ config = {}, stateDir, registrationMode = 'full', sendMedia }) {
+  const captured = { cli: [], commands: [], tools: [], hooks: [], mediaProviders: [], services: [], outbound: [] };
   const api = {
     registrationMode,
     pluginConfig: config,
+    config: { channels: {} },
     logger: { warn() {}, error() {}, info() {} },
-    runtime: { state: { resolveStateDir: () => stateDir } },
+    runtime: { state: { resolveStateDir: () => stateDir }, channel: { outbound: { loadAdapter: async () => ({ sendMedia: async options => {
+      captured.outbound.push(options);
+      return sendMedia ? sendMedia(options) : { channel: 'snowluma', messageId: `message-${captured.outbound.length}` };
+    } }) } } },
     registerCli(fn, opts) { captured.cli.push({ fn, opts }); },
     registerCommand(command) { captured.commands.push(command); },
     registerTool(tool, meta = {}) { captured.tools.push({ tool, meta }); },
     registerMediaUnderstandingProvider(provider) { captured.mediaProviders.push(provider); },
+    registerService(service) { captured.services.push(service); },
     on(event, handler) { captured.hooks.push({ event, handler }); }
   };
   plugin.register(api);
@@ -314,4 +319,38 @@ test('STT 供应商仅在启用时注册，缺少密钥时返回 null', { skip: 
   assert.equal(provider.resolveAuth(), null, '没有密钥时必须返回 null 而不是抛错或返回空密钥');
   process.env.SILICONFLOW_API_KEY = 'test-key';
   assert.deepEqual(provider.resolveAuth(), { kind: 'api-key', apiKey: 'test-key', source: 'SILICONFLOW_API_KEY' });
+});
+
+test('缓存清理随服务生命周期启停，discovery 不启动后台任务', { skip: skipSdk }, async t => {
+  const full = await setup(t);
+  assert.equal(full.services.length, 1);
+  await full.services[0].start();
+  await full.services[0].start();
+  await full.services[0].stop();
+  await full.services[0].stop();
+  const discovery = await setup(t, {}, { registrationMode: 'discovery' });
+  assert.equal(discovery.services.length, 0);
+});
+
+test('自然语言工具与图片指令都直接发送媒体，返回回执而不是让模型猜文件路径', { skip: skipSdk }, async t => {
+  const fetchBefore = globalThis.fetch, keyBefore = process.env.AGNES_API_KEY;
+  t.after(() => { globalThis.fetch = fetchBefore; if (keyBefore === undefined) delete process.env.AGNES_API_KEY; else process.env.AGNES_API_KEY = keyBefore; });
+  process.env.AGNES_API_KEY = 'test-only';
+  let generated = 0;
+  globalThis.fetch = async () => { generated++; return new Response(JSON.stringify({ data: [{ b64_json: Buffer.from('89504e470d0a1a0a00000000', 'hex').toString('base64') }] })); };
+  const harness = await setup(t, { admins: ['10001'], image: { enabled: true, provider: 'agnes' } });
+  t.after(async () => { for (const sent of harness.outbound) await rm(sent.mediaUrl, { force: true }); });
+  const noRoute = toolMap(harness).get('fatfish_generate_image');
+  await assert.rejects(noRoute.descriptor.execute('missing-target', { prompt: 'fish' }), /无法确定/);
+  assert.equal(generated, 0, '目的地不可用时不调用供应商');
+  const current = { ...adminCtx, deliveryContext: { channel: 'snowluma', to: 'private:10001', accountId: 'default' } };
+  const result = await toolMap(harness, current).get('fatfish_generate_image').descriptor.execute('call', { prompt: 'fish' });
+  assert.equal(result.details.status, 'sent');
+  assert.equal(harness.outbound.length, 1);
+  assert.match(result.content[0].text, /已取得通道回执/);
+  assert.equal(JSON.stringify(result).includes(harness.outbound[0].mediaUrl), false);
+  const reply = await harness.commands[0].handler({ channel: 'snowluma', senderId: '10001', from: 'private:10001', args: 'image fish', isAuthorizedSender: true });
+  assert.equal(harness.outbound.length, 2);
+  assert.equal(reply.mediaUrl, undefined, '不能再由回复分发器发送第二次');
+  assert.match(reply.text, /已取得通道回执/);
 });

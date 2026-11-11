@@ -13,13 +13,16 @@
 | 2026-11-10 | 同上 | `openclaw fatfish install-video-skill` | 从上游仓库安装成功，记录到具体提交 |
 | 2026-11-10 | SnowLuma v2.4.2 + QQ 3.34 + OpenClaw 2026.11.2 | 真实 QQ 私聊发送 `/fish help` | 机器人返回指令列表；SnowLuma 日志可见入站事件与出站引用回复，指令链路打通 |
 | 2026-11-11 | Windows / Node 22.22.2 | `npm test` | 91 个用例：89 通过、2 跳过、0 失败（新增官方 QQBot 通道、openid 身份、`tools.alsoAllow` 相关用例） |
+| 2026-11-11 | Windows / Node 24.14.0 / OpenClaw 2026.6.35 | alpha.16 隔离安装、运行时检查、配置验证和 `fatfish doctor` | 插件 `loaded`，7 个工具已注册；诊断能启动并报告空配置缺项；未连接真实 QQ |
+| 2026-11-11 | Windows / Node 24.14.0 | alpha.16 `npm test` 与 `npm run check` | 109 个用例：107 通过、2 跳过、0 失败；全部源码语法检查通过 |
+| 2026-11-11 | GitHub 最新默认分支 | 看视频技能实际安装与解析 | 成功记录 `44be7e702255126432cbfcb018e2e4c112e27a0c`；未执行视频分析或付费模型调用 |
 
 复现方式（始终使用独立状态目录，不要直接改已有 QQ 配置）：
 
 ```bash
 npm test
 npm run check
-openclaw --dev plugins install --link . --force --accept-capabilities
+openclaw --dev plugins install --link .
 openclaw --dev plugins inspect fatfish --runtime --json
 openclaw --dev config validate
 ```
@@ -56,6 +59,19 @@ openclaw --dev config validate
 - `test/index.test.js` 通过 Node 的模块解析钩子把 `openclaw/plugin-sdk/*` 替换成本地桩，用来执行并断言插件装配逻辑。
 - 因此它验证的是“给定 SDK 行为时的装配是否正确”，不能替代真实运行时验证。真实加载验证见上面的记录表。
 - 其余测试直接测模块本身，不依赖 OpenClaw。
+
+## 0.1.0-alpha.16
+
+- 修复媒体下载并发串文件、缓存命中误报失败：独立任务目录、yt-dlp 完成清单、有效缓存复用、同链接请求合并、累计大小校验和失败清理；解析并发默认最多 2 个。
+- 新增统一媒体发送适配层：生成前检查当前会话路由与发送能力，生图/视频/TTS/表情包/链接解析按通道回执报告结果，不再要求模型猜测文件路径或再次发送。
+- 新增 `/fish resend 编号 [file]`：持久保存发送进度，绑定原用户、会话、机器人账号与线程；重启后可重发未确认的已有结果，跳过已确认成功的文件。未知结果不会自动重试，以免重复发送。
+- 新增 `openclaw fatfish doctor`，向导写入后自动运行；仅检查配置、本机依赖和密钥是否存在，不调用计费模型，不证明 QQ 在线或 API 可用。
+- 修复向导替换其他插件的 `tools.alsoAllow`、留空群号却保留旧 `allowFrom` 的问题。
+- 看视频技能默认安装上游最新提交，验证后切换，失败保留旧版本；新增 `rollback-video-skill` 回退。保留子进程环境变量白名单。
+- 缓存清理改由 Gateway 服务生命周期管理，避免插件注册时启动重复定时器；下载与发送期间提供进程内文件租约。
+- 功能名称、权限标识与工具清单开始集中到功能注册表；语法检查自动遍历所有源码，CI 增加 Windows。
+
+仍需完成：真实 QQ 多媒体发送验证、完整的视频生成任务队列与恢复轮询、自动格式转换、QQ 入站语音/视频桥接、状态面板与群聊策略。当前发送适配层使用宿主公开的 `api.runtime.channel.outbound.loadAdapter`，依据通道返回的消息编号确认，不能证明终端用户已经阅读；通道是否支持语音或附件由其实现决定。
 
 ## 0.1.0-alpha.15
 
@@ -111,9 +127,10 @@ openclaw --dev config validate
 
 ### 阶段 1：媒体发送适配层
 
-- [ ] 抽象发送接口，带通道能力探测与失败回退
-- [ ] 明确“工具返回文件路径”和“消息已发送”之间的边界，避免模型误报已发送
-- [ ] 发送失败时给出可操作的错误，而不是静默丢弃
+- [x] 抽象发送接口，生成前检查路由与通道发送能力，支持显式按附件重发
+- [x] 明确“结果已准备”和“取得通道发送回执”之间的边界，避免模型误报已发送
+- [x] 发送失败时提供重发编号，保留发送进度
+- [ ] 真实 QQ 格式兼容性、自动转码与回执验证
 
 ### 阶段 2：语音与视频附件桥接
 

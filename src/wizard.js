@@ -27,28 +27,53 @@ export function parseWsUrl(raw) {
 
 // 可选工具默认不会暴露给模型，必须显式追加到 tools.alsoAllow。
 // 用 alsoAllow 而不是 tools.allow：后者是严格白名单，容易连核心工具一起关掉。
-function withPluginEntry({ admins, persona, enableTools }) {
+function withPluginEntry({ admins, persona, enableTools, existingAlsoAllow = [] }) {
   const entry = { config: { admins } };
   if (persona) {
     entry.config.persona = { enabled: true, prompt: persona };
     entry.hooks = { allowConversationAccess: true, allowPromptModification: true };
   }
   const patch = { plugins: { entries: { fatfish: entry } } };
-  if (enableTools) patch.tools = { alsoAllow: ['fatfish'] };
+  if (enableTools) {
+    if (!Array.isArray(existingAlsoAllow) || existingAlsoAllow.some(name => typeof name !== 'string')) throw new Error('现有 tools.alsoAllow 格式无效，请先修复配置。');
+    patch.tools = { alsoAllow: [...new Set([...existingAlsoAllow, 'fatfish'])] };
+  }
   return patch;
 }
 
-export function buildPatch({ wsUrl, token, admins, groups, persona, enableTools = false }) {
+export function buildPatch({ wsUrl, token, admins, groups, persona, enableTools = false, existingAlsoAllow = [] }) {
   const channel = { enabled: true, wsUrl, accessToken: token };
   // 只有显式填写群号时才收窄来源；留空表示不做通道级限制，
   // 任何人都能私聊或在群里触发（真正的功能权限仍由 fatfish 的 admins 和 /fish allow 控制）。
-  if (groups.length) channel.allowFrom = [...admins.map(id => `private:${id}`), ...groups.map(id => `group:${id}`)];
-  return { channels: { snowluma: channel }, ...withPluginEntry({ admins, persona, enableTools }) };
+  // config patch 用 null 删除字段；省略会保留旧名单，与“留空不限制”不一致。
+  channel.allowFrom = groups.length ? [...admins.map(id => `private:${id}`), ...groups.map(id => `group:${id}`)] : null;
+  return { channels: { snowluma: channel }, ...withPluginEntry({ admins, persona, enableTools, existingAlsoAllow }) };
 }
 
-export function buildQQBotPatch({ appId, clientSecret, admins, persona, enableTools = false }) {
+export function buildQQBotPatch({ appId, clientSecret, admins, persona, enableTools = false, existingAlsoAllow = [] }) {
   // allowFrom 留空表示不限制来源：官方机器人默认只有创建者能私聊。
-  return { channels: { qqbot: { enabled: true, appId, clientSecret } }, ...withPluginEntry({ admins, persona, enableTools }) };
+  return { channels: { qqbot: { enabled: true, appId, clientSecret } }, ...withPluginEntry({ admins, persona, enableTools, existingAlsoAllow }) };
+}
+
+async function readAlsoAllow(cli, enableTools) {
+  if (!enableTools) return [];
+  const result = await cli.capture(['config', 'get', 'tools', '--json']);
+  if (result.code !== 0) {
+    if (/Config path not found: tools(?:\.|\s|$)/.test(result.error ?? '')) return [];
+    throw new Error('无法读取现有工具设置，未应用 QQ 配置；请先运行 openclaw config validate。');
+  }
+  try {
+    const tools = JSON.parse(result.stdout);
+    const values = tools?.alsoAllow ?? [];
+    if (!Array.isArray(values) || values.some(value => typeof value !== 'string')) throw new Error();
+    return values;
+  } catch { throw new Error('无法解析现有工具设置，未应用 QQ 配置。'); }
+}
+
+async function showDiagnostics(ui, cli) {
+  const result = await cli.capture(['fatfish', 'doctor']);
+  if (result.stdout?.trim()) ui.print(result.stdout.trim());
+  if (result.code !== 0) ui.print('有项目需要处理；稍后运行 openclaw fatfish doctor 查看。此检查不会调用计费模型。');
 }
 
 export async function runWizard(ui, cli, probe = probeTcp, options = {}) {
@@ -130,12 +155,13 @@ async function runSnowlumaWizard(ui, cli, probe, { enableTools = false }) {
     if (code !== 0) ui.print('看视频引擎安装未完成；QQ 配置可继续，稍后可运行 openclaw fatfish install-video-skill 重试。');
   }
 
-  const patch = buildPatch({ wsUrl, token, admins, groups, persona, enableTools });
+  const existingAlsoAllow = await readAlsoAllow(cli, enableTools);
+  const patch = buildPatch({ wsUrl, token, admins, groups, persona, enableTools, existingAlsoAllow });
   ui.print('\n第 6 步：准备写入配置：');
   ui.print(`- QQ 通道地址：${wsUrl}`);
   ui.print(`- 管理员：${admins.join('、')}`);
   ui.print(`- 来源限制：${groups.length ? `仅管理员私聊与群 ${groups.join('、')}` : '不限制（任何人都能私聊，群里 @ 可触发）'}`);
-  ui.print('- 写入 SnowLuma 令牌；替换 QQ 通道的 allowFrom（仅在填写群号时）和大肥鱼管理员列表。');
+  ui.print(`- 写入 SnowLuma 令牌与管理员列表；${groups.length ? '替换来源名单' : '清除旧的来源名单，恢复不限制来源'}。`);
   ui.print(`- 给模型注册大肥鱼工具（tools.alsoAllow）：${enableTools ? '是' : '否；不开的话 AI 无法主动调用生图、解析等能力'}`);
   ui.print(`- 人格：${persona ? '启用并允许聊天提示钩子' : '不改动现有人格配置'}`);
   if (persona) ui.print('- 如果之前在 QQ 中设置过人格，该设置仍优先；可用 /fish persona reset 恢复配置文件中的人格。');
@@ -156,6 +182,7 @@ async function runSnowlumaWizard(ui, cli, probe, { enableTools = false }) {
   try {
     if (checked.code !== 0 || JSON.parse(checked.stdout).plugin.status !== 'loaded') throw new Error();
   } catch { throw new Error('配置已写入，但 SnowLuma 通道插件未能加载；请运行 openclaw plugins inspect openclaw-snowluma --runtime 检查。'); }
+  await showDiagnostics(ui, cli);
   ui.print('\n第 7 步：启动或重启 OpenClaw Gateway，然后从管理员 QQ 私聊机器人发送测试消息。');
   ui.print('配置已写入；本向导没有验证 Gateway、QQ 在线状态或机器人是否成功回复。');
   if (await ui.confirm('如果 Gateway 尚未运行，是否现在前台启动？', false)) {
@@ -222,7 +249,8 @@ async function runQQBotWizard(ui, cli, { enableTools = false }) {
   ui.print(`其余功能按教程配置：${guides}`);
   if (!enableTools) ui.print('注意：未给模型注册大肥鱼工具，AI 将无法主动调用生图、生视频、解析等能力，只能用 /fish 指令。');
 
-  const patch = buildQQBotPatch({ appId, clientSecret, admins, persona, enableTools });
+  const existingAlsoAllow = await readAlsoAllow(cli, enableTools);
+  const patch = buildQQBotPatch({ appId, clientSecret, admins, persona, enableTools, existingAlsoAllow });
   ui.print('\n第 6 步：准备写入配置：');
   ui.print(`- 官方机器人 AppID：${appId}`);
   ui.print(`- 管理员：${admins.length ? admins.join('、') : '未设置（稍后用 /fish whoami 查询后补上）'}`);
@@ -239,6 +267,7 @@ async function runQQBotWizard(ui, cli, { enableTools = false }) {
   ui.print('配置已写入。');
   const validation = await cli.capture(['config', 'validate']);
   if (validation.code !== 0) throw new Error('配置已写入，但验证失败；请运行 openclaw config validate 检查。');
+  await showDiagnostics(ui, cli);
 
   ui.print('\n第 7 步：重启 OpenClaw Gateway，然后私聊机器人发送 /fish whoami。');
   ui.print('配置已写入；本向导没有验证 Gateway、QQ 在线状态或机器人是否成功回复。');

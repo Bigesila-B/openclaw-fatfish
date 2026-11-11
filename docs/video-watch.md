@@ -12,9 +12,11 @@
 openclaw fatfish install-video-skill
 ```
 
-需要安装 Git 并能访问 GitHub。此命令安装的是**插件内置的固定提交**（`44be7e70`），不会跟随上游默认分支变化；想升级需要先更新插件版本。安装时用 `git fetch --depth 1 <commit>` 取回指定提交，并核对 `rev-parse HEAD` 与固定值一致，不一致即拒绝安装。也可在 `openclaw fatfish setup` 向导中选择下载。大肥鱼不会在每次启动或每条消息时自动更新；已有安装保留当前版本，直到你再次运行安装命令。
+需要安装 Git 并能访问 GitHub。每次运行安装命令都会拉取**上游默认分支的最新提交**，核对检出结果并记录实际提交。也可在 `openclaw fatfish setup` 向导中选择下载。大肥鱼不会在每次启动或每条消息时自动更新；已有安装保留当前版本，直到你再次运行安装命令。
 
 下载到 OpenClaw 状态目录 `fatfish/video-context-builder/versions/`，切换前检查核心文件和接口标记；失败保留原版本。此检查不能证明上游代码的安全性或所有功能兼容，请信任并审阅来源。上游更新可能改变依赖或接口，必要时需更新大肥鱼适配。旧版本目录会保留，请由管理员按需清理。
+
+更新后需要恢复上一版时，运行 `openclaw fatfish rollback-video-skill`；尚未安装过不同版本时没有可回退版本。安装或回退后重启 Gateway，避免正在分析的任务跨版本运行。
 
 ## 2. 安装依赖
 

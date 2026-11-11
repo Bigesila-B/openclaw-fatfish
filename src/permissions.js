@@ -3,8 +3,8 @@ import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { shouldBlock } from './blacklist.js';
 import { DEFAULT_CHANNELS, channelLabel, isBlacklistId, isValidSenderId } from './identity.js';
+import { capabilityIds as capabilities, CAPABILITIES } from './capabilities.js';
 
-const capabilities = ['image', 'video', 'watch', 'sticker', 'tts', 'parse'];
 const helpText = [
   '🐟 大肥鱼指令列表',
   '/fish 或 /fish help — 查看指令列表',
@@ -12,6 +12,7 @@ const helpText = [
   '/fish image 提示词 — 生成图片',
   '/fish video 提示词 — 生成视频',
   '/fish sticker 关键词 — 发送匹配的表情包',
+  '/fish resend 编号 [file] — 在原会话重发已有媒体；file 表示按附件发送',
   '',
   '以下指令仅管理员可操作：',
   '/fish permissions — 查看普通用户权限',
@@ -76,7 +77,7 @@ export function createPolicyStore(stateDir) {
   return { read, set };
 }
 
-export function makeAdminCommand({ admins, store, generate, personaStore, blacklistStore, stickerStore, stickerCooldown, stickerConfig, parseState, trustedChannels = DEFAULT_CHANNELS }) {
+export function makeAdminCommand({ admins, store, generate, personaStore, blacklistStore, stickerStore, stickerCooldown, stickerConfig, parseState, mediaDelivery, trustedChannels = DEFAULT_CHANNELS }) {
   const trusted = trustedChannels;
   // 各调用点给的字段名不统一，这里统一判断身份是否可用。
   const verified = identity => isValidSenderId(identity?.channel, identity?.senderId, trusted);
@@ -117,6 +118,13 @@ export function makeAdminCommand({ admins, store, generate, personaStore, blackl
         if (ctx.isAuthorizedSender !== true || !verified(identity)) return { text: '当前 QQ 用户未通过通道授权，或身份不可验证。' };
         return { text: helpText };
       }
+      const resend = /^resend\s+(\S+)(?:\s+(file))?$/.exec(commandArgs);
+      if (resend) {
+        if (ctx.isAuthorizedSender !== true || !verified(identity)) return { text: '当前 QQ 用户未通过通道授权，或身份不可验证。' };
+        if (!mediaDelivery) return { text: '媒体重发功能不可用。' };
+        try { return { text: (await mediaDelivery.resend(ctx, resend[1], { forceDocument: resend[2] === 'file' })).text }; }
+        catch { return { text: '无法重发：请确认编号有效、仍有功能权限，且正在原请求用户的原会话中操作。' }; }
+      }
       const stickerMatch = /^sticker\s+([\s\S]+)$/.exec((ctx.args ?? '').trim());
       if (stickerMatch) {
         if (ctx.isAuthorizedSender !== true || !canUse(identity, admins, await store.read(), 'sticker', trusted)) return { text: '当前 QQ 用户没有使用表情包的权限，或身份不可验证。' };
@@ -127,14 +135,17 @@ export function makeAdminCommand({ admins, store, generate, personaStore, blackl
         if (!item) return { text: '表情包文件不可用。' };
         if (!canUse(identity, admins, await store.read(), 'sticker', trusted)) return { text: '表情包权限已变更。' };
         if (!stickerCooldown(conversationId ?? ctx.sessionKey)) return { text: '表情包发送太频繁，请稍后再试。' };
+        if (mediaDelivery) return { text: (await mediaDelivery.deliver(ctx, 'sticker', [item.filePath])).text };
         return { mediaUrl: item.filePath };
       }
       const match = /^(image|video)\s+([\s\S]+)$/.exec((ctx.args ?? '').trim());
       if (match) {
         if (ctx.isAuthorizedSender !== true || !canUse(identity, admins, await store.read(), match[1], trusted)) return { text: '当前 QQ 用户没有使用此功能的权限，或身份不可验证。' };
         if (!generate) return { text: '此功能尚未配置。' };
+        if (mediaDelivery) await mediaDelivery.check(ctx, match[1]);
         const result = await generate(match[1], match[2]);
         if (!canUse(identity, admins, await store.read(), match[1], trusted)) return { text: '生成期间权限发生变化，无法发送结果。' };
+        if (mediaDelivery) return { text: (await mediaDelivery.deliver(ctx, match[1], [result.filePath])).text };
         return { text: '生成完成。', mediaUrl: result.filePath };
       }
       if (ctx.isAuthorizedSender !== true || !isAdmin(identity, admins, trusted)) return { text: '仅限已配置并通过通道授权的 QQ 管理员使用。' };
@@ -195,7 +206,7 @@ export function makeAdminCommand({ admins, store, generate, personaStore, blackl
         return { text: '用法：/fish permissions 或 /fish allow image|video|watch|sticker|tts|parse on|off' };
       }
       await store.set(args[1], args[2] === 'on');
-      return { text: `已${args[2] === 'on' ? '允许' : '禁止'}普通用户使用${{ image: '生图', video: '生视频', watch: '看视频', sticker: '表情包', tts: '语音合成', parse: '媒体解析' }[args[1]]}；功能仍须由管理员配置并启用。` };
+      return { text: `已${args[2] === 'on' ? '允许' : '禁止'}普通用户使用${CAPABILITIES.find(item => item.id === args[1]).label}；功能仍须由管理员配置并启用。` };
     }
   };
 }
